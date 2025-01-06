@@ -820,6 +820,7 @@ pub async fn connect(ledger_path: &Path) -> std::result::Result<gen_client::Clie
     }
 }
 
+/// 给 admin rpc 新建 tokio 单线程运行时
 pub fn runtime() -> Runtime {
     tokio::runtime::Builder::new_multi_thread()
         .thread_name("solAdminRpcRt")

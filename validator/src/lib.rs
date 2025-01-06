@@ -84,23 +84,31 @@ pub fn redirect_stderr_to_file(logfile: Option<String>) -> Option<JoinHandle<()>
     }
 }
 
+/// 优美打印 名字 值，名字用粗体
 pub fn format_name_value(name: &str, value: &str) -> String {
     format!("{} {}", style(name).bold(), value)
 }
 /// Pretty print a "name value"
+/// 优美打印 名字 值，名字用粗体
 pub fn println_name_value(name: &str, value: &str) {
     println!("{}", format_name_value(name, value));
 }
 
 /// Creates a new process bar for processing that will take an unknown amount of time
+/// 新建进度条
 pub fn new_spinner_progress_bar() -> ProgressBar {
+    /// 进度条库 indicatif
     let progress_bar = indicatif::ProgressBar::new(42);
+    /// 设置绘制目标，绘制到标准输出
     progress_bar.set_draw_target(ProgressDrawTarget::stdout());
+    /// 设置样式
     progress_bar.set_style(
         ProgressStyle::default_spinner()
+            /// 绿色进度条，详细信息
             .template("{spinner:.green} {wide_msg}")
             .expect("ProgresStyle::template direct input to be correct"),
     );
+    /// 100 毫秒刷新一次进度条
     progress_bar.enable_steady_tick(Duration::from_millis(100));
 
     ProgressBar {
@@ -115,10 +123,12 @@ pub struct ProgressBar {
 }
 
 impl ProgressBar {
+    /// 设置进度条显示信息
     pub fn set_message<T: Into<Cow<'static, str>> + Display>(&self, msg: T) {
         if self.is_term {
             self.progress_bar.set_message(msg);
         } else {
+            /// 不是终端的话直接打印
             println!("{msg}");
         }
     }

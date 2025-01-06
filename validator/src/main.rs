@@ -1,5 +1,7 @@
 #![allow(clippy::arithmetic_side_effects)]
 #[cfg(not(any(target_env = "msvc", target_os = "freebsd")))]
+
+//! 起点
 use jemallocator::Jemalloc;
 use {
     agave_validator::{
@@ -89,19 +91,27 @@ use {
     },
 };
 
+/// 替换内存分配器，Jemalloc多线程性能优于标准库使用的系统默认分配器
+/// msvc 和 freebsd 不适用
 #[cfg(not(any(target_env = "msvc", target_os = "freebsd")))]
 #[global_allocator]
 static GLOBAL: Jemalloc = Jemalloc;
 
+/// 操作，只初始化环境或者实际运行
 #[derive(Debug, PartialEq, Eq)]
 enum Operation {
+    /// 只初始化环境
     Initialize,
+    /// 实际运行
     Run,
 }
 
+/// 每秒的毫秒数
 const MILLIS_PER_SECOND: u64 = 1000;
 
+/// 用来监控验证器状态
 fn monitor_validator(ledger_path: &Path) {
+    // 新建监控仪表板
     let dashboard = Dashboard::new(ledger_path, None, None).unwrap_or_else(|err| {
         println!(
             "Error: Unable to connect to validator at {}: {:?}",
@@ -110,6 +120,7 @@ fn monitor_validator(ledger_path: &Path) {
         );
         exit(1);
     });
+    // 运行监控仪表板
     dashboard.run(Duration::from_secs(2));
 }
 
