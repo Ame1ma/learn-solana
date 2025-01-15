@@ -196,7 +196,6 @@ impl Dashboard {
 
                         /// 打印 已运行时间，多少时隙已被处理，多少时隙已被验证，多少时隙已被终结，多少时隙被全快照，多少时隙被增量快照
                         /// 在 Solana 网络中，Full Snapshot 和 Incremental Snapshot 是两种用于保存区块链状态的快照，主要用于加速节点同步，减少从创世区块开始重放所有交易所需的时间。
-
                         /// 1. Full Snapshot
                         /// 定义：完整快照包含区块链在某个特定 slot（区块高度）上的完整状态，包括所有账户的数据和状态。
                         /// 特点：
@@ -283,6 +282,7 @@ async fn wait_for_validator_startup(
 
         /// 尝试连接到验证器，不行就重来
         if admin_client.is_none() {
+            /// admin 客户端，通过 sockets 文件连接
             match admin_rpc_service::connect(ledger_path).await {
                 Ok(new_admin_client) => admin_client = Some(new_admin_client),
                 Err(err) => {

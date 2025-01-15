@@ -109,7 +109,7 @@ enum Operation {
 /// 每秒的毫秒数
 const MILLIS_PER_SECOND: u64 = 1000;
 
-/// 用来监控验证器状态
+/// 用来在控制台上打印启动进度条、启动后定时打印验证器状态
 fn monitor_validator(ledger_path: &Path) {
     // 新建监控仪表板
     let dashboard = Dashboard::new(ledger_path, None, None).unwrap_or_else(|err| {
@@ -124,6 +124,12 @@ fn monitor_validator(ledger_path: &Path) {
     dashboard.run(Duration::from_secs(2));
 }
 
+/// 等待重启窗口，找合适的时机以及自己状态健康的时候，适合重启，算重启窗口
+/// 函数会判断是否满足以下条件之一，进入重启窗口：
+/// 节点健康且没有高过失的质押。
+/// 有合适的空闲时间段（大于最小空闲时间的 slot）。
+/// 如果跳过了快照检查且其他条件满足，则直接进入重启。
+/// 如果快照状态合适（比如有增量快照），并且其他条件满足，则进入重启
 fn wait_for_restart_window(
     ledger_path: &Path,
     identity: Option<Pubkey>,
@@ -132,19 +138,29 @@ fn wait_for_restart_window(
     skip_new_snapshot_check: bool,
     skip_health_check: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    /// 设置每次循环检查的间隔时间为 5 秒。
     let sleep_interval = Duration::from_secs(5);
 
+    /// 每分钟最小空闲时隙，将最小空闲时间转换为最小空闲 slot 数量。
+    /// DEFAULT_S_PER_SLOT 是每个 slot 所需的时间（默认为 400 毫秒）
+    /// 该值会用于计算验证者节点在重启前至少需要有多少个 slot 的空闲时间
+    /// 需要挑一个长度足够长的空闲时隙，这段时间自己离任期还有很远，可以从容在这段时间内重启完成不会手忙脚乱
+    /// 这里设置的就是这个空闲时隙的最小值
     let min_idle_slots = (min_idle_time_in_minutes as f64 * 60. / DEFAULT_S_PER_SLOT) as Slot;
 
+    /// 新建 admin 客户端，通过本地 sockets 文件连接
     let admin_client = admin_rpc_service::connect(ledger_path);
+    /// 获取验证器正常 rpc 地址
     let rpc_addr = admin_rpc_service::runtime()
         .block_on(async move { admin_client.await?.rpc_addr().await })
         .map_err(|err| format!("Unable to get validator RPC address: {err}"))?;
 
+    /// 新建 rpc
     let Some(rpc_client) = rpc_addr.map(RpcClient::new_socket) else {
         return Err("RPC not available".into());
     };
 
+    /// 获取并打印节点公钥 从 rpc
     let my_identity = rpc_client.get_identity()?;
     let identity = identity.unwrap_or(my_identity);
     let monitoring_another_validator = identity != my_identity;
@@ -166,15 +182,21 @@ fn wait_for_restart_window(
 
     let mut seen_incremential_snapshot = false;
     loop {
+        /// 获取验证器上有快照的最高时隙，返回一个 full 快照，和一个可能的增量快照
         let snapshot_slot_info = rpc_client.get_highest_snapshot_slot().ok();
+        /// 最高时隙有没有增量
         let snapshot_slot_info_has_incremential = snapshot_slot_info
             .as_ref()
             .map(|snapshot_slot_info| snapshot_slot_info.incremental.is_some())
             .unwrap_or_default();
         seen_incremential_snapshot |= snapshot_slot_info_has_incremential;
 
+        /// 获取纪元信息
         let epoch_info = rpc_client.get_epoch_info_with_commitment(CommitmentConfig::processed())?;
+        /// 健康检查
         let healthy = skip_health_check || rpc_client.get_health().ok().is_some();
+        /// 过失质押和总质押的比值
+        /// 如果过失的质押比例超过了最大拖延百分比（max_delinquency_percentage），则不允许重启。
         let delinquent_stake_percentage = {
             let vote_accounts = rpc_client.get_vote_accounts()?;
             let current_stake: u64 = vote_accounts
@@ -191,16 +213,20 @@ fn wait_for_restart_window(
             delinquent_stake as f64 / total_stake as f64
         };
 
+        /// 每个纪元只计算一次
         if match current_epoch {
             None => true,
             Some(current_epoch) => current_epoch != epoch_info.epoch,
         } {
+            /// 打印进度，获取 leader 排期
             progress_bar.set_message(format!(
                 "Fetching leader schedule for epoch {}...",
                 epoch_info.epoch
             ));
+            /// 获取纪元内第一个时隙，用当前时隙减去当前时隙在纪元内索引，因为时隙是递增的数字
             let first_slot_in_epoch = epoch_info.absolute_slot - epoch_info.slot_index;
             leader_schedule = rpc_client
+                ///获取 leader 排期，是一个 节点公钥 到 纪元内时隙序号 的映射表
                 .get_leader_schedule_with_config(
                     Some(first_slot_in_epoch),
                     RpcLeaderScheduleConfig {
@@ -211,28 +237,39 @@ fn wait_for_restart_window(
                 .ok_or_else(|| {
                     format!("Unable to get leader schedule from slot {first_slot_in_epoch}")
                 })?
+                /// 取自己的 leader 任期
                 .get(&identity.to_string())
                 .cloned()
                 .unwrap_or_default()
                 .into_iter()
+                /// 从纪元内时隙序号转到绝对的时隙号
                 .map(|slot_index| first_slot_in_epoch.saturating_add(slot_index as u64))
                 .filter(|slot| *slot > epoch_info.absolute_slot)
                 .collect::<VecDeque<_>>();
 
+            /// 可以用来启动的非任期窗口
             upcoming_idle_windows.clear();
             {
                 let mut leader_schedule = leader_schedule.clone();
+                /// 最大的非任期窗口
                 let mut max_idle_window = 0;
 
+                /// 窗口开始时隙设为当前时隙号
                 let mut idle_window_start_slot = epoch_info.absolute_slot;
+                /// 遍历自己的任期
                 while let Some(next_leader_slot) = leader_schedule.pop_front() {
+                    /// 下一次自己的任期时隙减去当前时隙号，即为非任期窗口
                     let idle_window = next_leader_slot - idle_window_start_slot;
+                    /// 更新最大非任期窗口
                     max_idle_window = max_idle_window.max(idle_window);
+                    /// 如果长度超过了设置的非任期窗口最小时隙，那就算是可以用来启动的非任期窗口，记录到可以用来启动的非任期窗口里
                     if idle_window > min_idle_slots {
                         upcoming_idle_windows.push((idle_window_start_slot, idle_window));
                     }
+                    /// 下一个非任期窗口从下一届任期开始
                     idle_window_start_slot = next_leader_slot;
                 }
+                /// 如果没有任期或可以用来启动的非任期窗口，则报错
                 if !leader_schedule.is_empty() && upcoming_idle_windows.is_empty() {
                     return Err(format!(
                         "Validator has no idle window of at least {} slots. Largest idle window \
@@ -243,19 +280,24 @@ fn wait_for_restart_window(
                 }
             }
 
+            /// 更新纪元
             current_epoch = Some(epoch_info.epoch);
         }
 
         let status = {
+            /// 不健康就不继续查状态了
             if !healthy {
                 style("Node is unhealthy").red().to_string()
             } else {
                 // Wait until a hole in the leader schedule before restarting the node
+                // 获取现在是否是一个启动好时机
                 let in_leader_schedule_hole = if epoch_info.slot_index + min_idle_slots
                     > epoch_info.slots_in_epoch
                 {
+                    /// 如果纪元里剩余的时隙不够最小非任期窗口，那就等下一个纪元
                     Err("Current epoch is almost complete".to_string())
                 } else {
+                    /// 排除掉已经过时的时隙
                     while leader_schedule
                         .front()
                         .map(|slot| *slot < epoch_info.absolute_slot)
@@ -263,6 +305,7 @@ fn wait_for_restart_window(
                     {
                         leader_schedule.pop_front();
                     }
+                    /// 排除掉已经过时的非任期窗口
                     while upcoming_idle_windows
                         .first()
                         .map(|(slot, _)| *slot < epoch_info.absolute_slot)
@@ -271,16 +314,21 @@ fn wait_for_restart_window(
                         upcoming_idle_windows.pop();
                     }
 
+                    /// 再看调度表
                     match leader_schedule.front() {
                         None => {
+                            /// 已经没有任期了，可以安全启动
                             Ok(()) // Validator has no leader slots
                         }
                         Some(next_leader_slot) => {
+                            /// 下一次任期开始时隙减去当前时隙
                             let idle_slots =
                                 next_leader_slot.saturating_sub(epoch_info.absolute_slot);
                             if idle_slots >= min_idle_slots {
+                                /// 下一次任期还早，可以安全启动
                                 Ok(())
                             } else {
+                                /// 下一次任期不早了，赶不上启动
                                 Err(match upcoming_idle_windows.first() {
                                     Some((starting_slot, length_in_slots)) => {
                                         format!(
@@ -299,8 +347,10 @@ fn wait_for_restart_window(
                     }
                 };
 
+                /// 现在是否是个启动好时机
                 match in_leader_schedule_hole {
                     Ok(_) => {
+                        /// 下面都是需要快照的检查了，不检查可以直接启动
                         if skip_new_snapshot_check {
                             break; // Restart!
                         }
@@ -312,8 +362,10 @@ fn wait_for_restart_window(
                         if restart_snapshot.is_none() {
                             restart_snapshot = snapshot_slot;
                         }
+                        /// 没有新快照
                         if restart_snapshot == snapshot_slot && !monitoring_another_validator {
                             "Waiting for a new snapshot".to_string()
+                        /// 过失率过高
                         } else if delinquent_stake_percentage
                             >= (max_delinquency_percentage as f64 / 100.)
                         {
@@ -332,11 +384,14 @@ fn wait_for_restart_window(
                             break; // Restart!
                         }
                     }
+                    /// 不是个好时机
                     Err(why) => style(why).yellow().to_string(),
                 }
             }
         };
 
+        /// 如果可以重启，在上面那个 break 那里就已经退出函数了，这里打印进度条，说明还不能重启
+        /// monitor 开始到现在经过的时间 | 当前时隙（也是 Processed 时隙） | 过失比例 | 不启动的原因
         progress_bar.set_message(format!(
             "{} | Processed Slot: {} {} | {:.2}% delinquent stake | {}",
             {
@@ -373,11 +428,14 @@ fn wait_for_restart_window(
         ));
         std::thread::sleep(sleep_interval);
     }
+    /// 关闭进度条显示
     drop(progress_bar);
+    /// 已做好重启准备
     println!("{}", style("Ready to restart").green());
     Ok(())
 }
 
+/// 通过本地 admin 客户端，请求更新 repair 白名单
 fn set_repair_whitelist(
     ledger_path: &Path,
     whitelist: Vec<Pubkey>,
@@ -395,6 +453,7 @@ fn set_repair_whitelist(
 }
 
 // This function is duplicated in ledger-tool/src/main.rs...
+/// 解析硬分叉传参，必须是个u64
 fn hardforks_of(matches: &ArgMatches<'_>, name: &str) -> Option<Vec<Slot>> {
     if matches.is_present(name) {
         Some(values_t_or_exit!(matches, name, Slot))
@@ -403,6 +462,8 @@ fn hardforks_of(matches: &ArgMatches<'_>, name: &str) -> Option<Vec<Slot>> {
     }
 }
 
+/// 解析验证器集传参
+/// 或许这里newtype更好？
 fn validators_set(
     identity_pubkey: &Pubkey,
     matches: &ArgMatches<'_>,
@@ -423,12 +484,54 @@ fn validators_set(
     }
 }
 
+/// 获取集群shred版本，用于后续通信
+/// 在 Solana 区块链中，**Shred Version** 是一个与网络分片相关的重要概念，用于确保不同的集群（Cluster）之间的数据兼容性和网络隔离性。以下是详细解释：
+/// ---
+/// ### 1. **Shred 和 Shred Version 的背景**
+/// - **Shred** 是 Solana 用于区块链数据存储和传播的基本数据单位。
+///   - 当一个区块生成时，区块被分割成多个小数据块，这些小块称为 Shreds。
+///   - Shreds 被用于高效传输和存储数据，同时支持验证者在网络中的数据同步。
+/// - **Shred Version** 是一个网络中的唯一标识符。
+///   - 它通过一个特定的计算公式生成，通常基于当前集群的区块链状态（例如 Genesis Hash）。
+///   - 每个集群有一个独立的 Shred Version，用来确保只接受来自相同 Shred Version 的数据。
+/// ---
+/// ### 2. **Shred Version 的作用**
+/// 1. **隔离网络数据**
+///    - 不同的网络或集群（如主网、测试网、开发网）会有不同的 Shred Version。
+///    - 这可以防止网络之间的数据混淆或干扰。例如，主网不会意外地处理测试网的 Shred 数据。
+/// 2. **防止冲突和安全性**
+///    - 如果两条链的 Shred Version 相同，可能会导致冲突或意外行为。
+///    - 唯一的 Shred Version 可防止意外的数据传输和攻击。
+/// 3. **集群验证**
+///    - 节点在加入一个网络时，会检查 Shred Version。如果本地的 Shred Version 与集群的不同，节点将无法同步数据。
+/// ---
+/// ### 3. **Shred Version 的生成**
+/// - Shred Version 通常通过以下公式计算：
+///   ```
+///   Shred Version = hash(Genesis Hash) % MAX_VERSION
+///   ```
+///   - **Genesis Hash** 是链启动时的初始哈希值，用于唯一标识区块链。
+///   - **MAX_VERSION** 是一个预定义的常量，限制 Shred Version 的范围。
+/// ---
+/// ### 4. **与 Validator 的关系**
+/// - **Validator（验证者）** 在启动时必须配置正确的 Shred Version。
+/// - 如果 Shred Version 不匹配：
+///   - 节点无法加入集群。
+///   - 无法处理网络中的交易或数据。
+/// ---
+/// ### 5. **实际场景举例**
+/// - **主网升级**：当 Solana 主网进行重大升级时，可能会更新 Genesis Hash，从而改变 Shred Version。这要求所有节点更新其配置以匹配新的版本。
+/// - **测试网和开发环境**：开发者在本地运行 Solana 节点时，会生成一个新的 Genesis Hash，因此也会有不同的 Shred Version。
+/// ---
+/// ### 总结
+/// Shred Version 是 Solana 中用于分片版本管理的重要机制，通过唯一标识不同集群的数据流，确保了数据隔离性和网络安全性。
 fn get_cluster_shred_version(entrypoints: &[SocketAddr]) -> Option<u16> {
     let entrypoints = {
         let mut index: Vec<_> = (0..entrypoints.len()).collect();
         index.shuffle(&mut rand::thread_rng());
         index.into_iter().map(|i| &entrypoints[i])
     };
+    /// 从 entrypoints 获取
     for entrypoint in entrypoints {
         match solana_net_utils::get_cluster_shred_version(entrypoint) {
             Err(err) => eprintln!("get_cluster_shred_version failed: {entrypoint}, {err}"),
@@ -445,6 +548,7 @@ fn get_cluster_shred_version(entrypoints: &[SocketAddr]) -> Option<u16> {
     None
 }
 
+/// 解析banking trace的目录大小限制传参
 fn configure_banking_trace_dir_byte_limit(
     validator_config: &mut ValidatorConfig,
     matches: &ArgMatches,

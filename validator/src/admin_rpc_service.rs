@@ -787,6 +787,7 @@ pub fn run(ledger_path: &Path, metadata: AdminRpcRequestMetadata) {
         .unwrap();
 }
 
+/// admin 的 rpc 是通过本地 sockets 文件通信的，在 ledger_path 里
 fn admin_rpc_path(ledger_path: &Path) -> PathBuf {
     #[cfg(target_family = "windows")]
     {
@@ -808,6 +809,7 @@ fn admin_rpc_path(ledger_path: &Path) -> PathBuf {
 }
 
 // Connect to the Admin RPC interface
+/// 通过本地 Sockets 文件连接到验证器
 pub async fn connect(ledger_path: &Path) -> std::result::Result<gen_client::Client, RpcError> {
     let admin_rpc_path = admin_rpc_path(ledger_path);
     if !admin_rpc_path.exists() {
@@ -816,6 +818,7 @@ pub async fn connect(ledger_path: &Path) -> std::result::Result<gen_client::Clie
             admin_rpc_path.display()
         )))
     } else {
+        /// sockets 连接
         ipc::connect::<_, gen_client::Client>(&format!("{}", admin_rpc_path.display())).await
     }
 }

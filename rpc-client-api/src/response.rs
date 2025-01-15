@@ -293,6 +293,7 @@ pub struct RpcContactInfo {
 }
 
 /// Map of leader base58 identity pubkeys to the slot indices relative to the first epoch slot
+/// 节点公钥到当前纪元中自己当 leader 的时隙索引的映射表
 pub type RpcLeaderSchedule = HashMap<String, Vec<usize>>;
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -354,39 +355,72 @@ pub struct RpcVote {
     pub signature: String,
 }
 
+/// 投票账号状态
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct RpcVoteAccountStatus {
+    /// 当前的
     pub current: Vec<RpcVoteAccountInfo>,
+    /// 有过失的
     pub delinquent: Vec<RpcVoteAccountInfo>,
 }
 
+
+/// 在 Solana 中，VoteAccount 是一种特殊的账户类型，用于记录验证者在网络中的投票行为和参与共识的情况。它是 Solana 网络中的一个核心组成部分，帮助确保网络的去中心化和验证者的责任性。
+/// VoteAccount的作用
+/// 记录验证者投票：
+/// Solana 网络采用 Proof of History (PoH) 和 Proof of Stake (PoS) 的混合共识机制。在这种机制下，验证者不仅负责验证区块，还参与投票以帮助网络确定哪个区块在区块链中是合法的（即最终的）。
+/// VoteAccount 用于记录这些投票信息，包括验证者对区块的选择与是否支持某些区块（即验证者投票的区块）。
+/// 保证验证者活跃度：
+/// 验证者通过 VoteAccount 向网络证明他们有参与共识机制，且在网络中保持活跃。每个验证者必须定期提交投票，以便参与共识并获得奖励。
+/// 投票频率和质量（即是否投票支持正确的区块）直接影响验证者的奖励和声誉。如果验证者的投票记录不佳或参与度不足，他们可能会失去获得奖励的资格。
+/// 奖励分配：
+/// Solana 网络的奖励分配是基于验证者的参与度和投票记录来计算的。通过 VoteAccount，验证者可以获得来自网络的奖励，奖励的分配依据他们的投票情况、投票的及时性以及正确性。
+/// VoteAccount的结构
+/// 一个 VoteAccount 包含以下信息：
+/// 验证者的身份：即验证者的身份信息。
+/// 投票历史：记录验证者投票的区块，包括支持的区块和投票的时间。
+/// 投票权重：根据验证者在网络中质押的资金量和投票行为计算出来的投票权重。质押越多、投票越积极，投票权重越大。
+/// VoteAccount的重要性
+/// 网络安全：通过记录每个验证者的投票情况，VoteAccount 使得网络可以对参与共识的验证者进行评估，保证验证者的行为透明、可审计，从而增加网络的安全性。
+/// 奖励机制：VoteAccount 是验证者获得奖励的基础。积极投票、参与共识的验证者可以通过 VoteAccount 获得更多的奖励，而不活跃或表现差的验证者会失去奖励或被淘汰。
+/// 验证者的去中心化与公平性：通过 VoteAccount，网络确保了验证者的去中心化和公平性。每个验证者都有机会投票，并通过他们的投票行为影响区块的最终排序。
+/// 总结
+/// VoteAccount 是 Solana 中用于跟踪和记录验证者投票行为的账户，它不仅对网络的共识过程至关重要，还与验证者的奖励和参与度密切相关。通过这个机制，Solana 可以鼓励验证者积极参与共识并确保区块链的去中心化和安全性。
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct RpcVoteAccountInfo {
     /// Vote account address, as base-58 encoded string
+    /// 投票账号的公钥地址
     pub vote_pubkey: String,
 
     /// The validator identity, as base-58 encoded string
+    /// 对应节点的公钥地址
     pub node_pubkey: String,
 
     /// The current stake, in lamports, delegated to this vote account
+    /// 这个投票账号里的质押 lamports 数
     pub activated_stake: u64,
 
     /// An 8-bit integer used as a fraction (commission/MAX_U8) for rewards payout
+    /// 佣金小数
     pub commission: u8,
 
     /// Whether this account is staked for the current epoch
+    /// 该账号是否质押给了当前纪元
     pub epoch_vote_account: bool,
 
     /// Latest history of earned credits for up to `MAX_RPC_VOTE_ACCOUNT_INFO_EPOCH_CREDITS_HISTORY` epochs
     ///   each tuple is (Epoch, credits, prev_credits)
+    /// 历史纪元积分，最多保存 MAX_RPC_VOTE_ACCOUNT_INFO_EPOCH_CREDITS_HISTORY 个
     pub epoch_credits: Vec<(Epoch, u64, u64)>,
 
     /// Most recent slot voted on by this vote account (0 if no votes exist)
+    /// 最近投票的时隙
     pub last_vote: u64,
 
     /// Current root slot for this vote account (0 if no root slot exists)
+    /// 该账号的当前根时隙
     pub root_slot: Slot,
 }
 
@@ -517,9 +551,12 @@ impl From<ConfirmedTransactionStatusWithSignature> for RpcConfirmedTransactionSt
     }
 }
 
+/// 快照的时隙号
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 pub struct RpcSnapshotSlotInfo {
+    /// 全时隙
     pub full: Slot,
+    /// 增量时隙
     pub incremental: Option<Slot>,
 }
 
