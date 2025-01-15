@@ -566,6 +566,7 @@ fn configure_banking_trace_dir_byte_limit(
 }
 
 pub fn main() {
+    // 默认配置，用来在命令行提示中显示默认值，并且作为实际的默认值
     let default_args = DefaultArgs::new();
     let solana_version = solana_version::version!();
     let cli_app = app(solana_version, &default_args);
