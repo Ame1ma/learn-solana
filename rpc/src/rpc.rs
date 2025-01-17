@@ -156,23 +156,43 @@ fn is_finalized(
         && (blockstore.is_root(slot) || bank.status_cache_ancestors().contains(&slot))
 }
 
+/// rpc 相关配置
 #[derive(Debug, Clone)]
 pub struct JsonRpcConfig {
+    /// 启用交易历史类的rpc
     pub enable_rpc_transaction_history: bool,
+    /// 启用扩展交易元数据存储类的rpc
     pub enable_extended_tx_metadata_storage: bool,
+    /// 空投水龙头地址
     pub faucet_addr: Option<SocketAddr>,
+    /// 多少时隙检查一次健康
     pub health_check_slot_distance: u64,
+    /// 跳过试飞健康检查
     pub skip_preflight_health_check: bool,
+    /// 谷歌大表配置
     pub rpc_bigtable_config: Option<RpcBigtableConfig>,
+    /// 扫描账户时的最大结果大小
     pub max_multiple_accounts: Option<usize>,
+    /// 账户索引配置
     pub account_indexes: AccountSecondaryIndexes,
+    /// rpc 线程数
     pub rpc_threads: usize,
+    /// rpc 阻塞线程数
     pub rpc_blocking_threads: usize,
+    /// rpc 资源优先级
     pub rpc_niceness_adj: i8,
+    /// 是否开放所有 api
     pub full_api: bool,
+    /// rpc 扫描和修复根
+    /// 在 Solana 中，根目录（roots）是一个概念，用来表示在区块链中被确认的账户的状态。
+    /// 具体来说，根目录用于表示已经被 最终确认 或 稳定 的账户数据。这些账户数据已经经历了足够的区块确认，足以认为其不会被回滚。
+    /// 根目录的作用是帮助 Solana 确定哪些账户数据应该被持久化以及哪些账户数据应该被清理。
+    /// rpc_scan_and_fix_roots 主要用于在遇到账户数据库状态不一致时进行修复。Solana 节点会扫描并修复根目录的一些潜在问题
     pub rpc_scan_and_fix_roots: bool,
+    /// 请求体大小限制
     pub max_request_body_size: Option<usize>,
     /// Disable the health check, used for tests and TestValidator
+    /// 关闭健康检查
     pub disable_health_check: bool,
 }
 
@@ -208,12 +228,18 @@ impl JsonRpcConfig {
     }
 }
 
+/// 谷歌大表配置
 #[derive(Debug, Clone)]
 pub struct RpcBigtableConfig {
+    /// 启用大表账本上传
     pub enable_bigtable_ledger_upload: bool,
+    /// 大表实例名
     pub bigtable_instance_name: String,
+    /// 大表账户id
     pub bigtable_app_profile_id: String,
+    /// 超时时间
     pub timeout: Option<Duration>,
+    /// 最大消息大小
     pub max_message_size: usize,
 }
 

@@ -8,9 +8,12 @@ const MAX_PARTITIONED_REWARDS_PER_BLOCK: u64 = 4096;
 
 #[derive(Debug, Clone, Copy)]
 /// Configuration options for partitioned epoch rewards.
+/// 分区epoch奖励的配置选项
 pub struct PartitionedEpochRewardsConfig {
     /// number of stake accounts to store in one block during partitioned reward interval
     /// normally, this is a number tuned for reasonable performance, such as 4096 accounts/block
+    ///在分区奖励间隔期间存储在一个区块中的权益账户数量
+    ///通常，这是一个为合理性能调整的数字，例如4096个帐户/块
     pub stake_account_stores_per_block: u64,
 }
 

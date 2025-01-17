@@ -14,6 +14,7 @@ extern crate solana_frozen_abi_macro;
 
 mod legacy;
 
+/// 集群验证器实现
 #[derive(Debug, Eq, PartialEq)]
 enum ClientId {
     SolanaLabs,
@@ -24,43 +25,56 @@ enum ClientId {
     Unknown(u16),
 }
 
+/// 版本
 #[cfg_attr(feature = "frozen-abi", derive(AbiExample))]
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct Version {
+    /// 主版本
     #[serde(with = "serde_varint")]
     pub major: u16,
+    /// 小版本
     #[serde(with = "serde_varint")]
     pub minor: u16,
+    /// 补丁版本
     #[serde(with = "serde_varint")]
     pub patch: u16,
+    /// 提交哈希的前四字节
     pub commit: u32,      // first 4 bytes of the sha1 commit hash
+    /// 特性集标识符的前四字节
     pub feature_set: u32, // first 4 bytes of the FeatureSet identifier
+    /// 验证器实现
     #[serde(with = "serde_varint")]
     client: u16,
 }
 
 impl Version {
+    /// 转为语义化版本
     pub fn as_semver_version(&self) -> semver::Version {
         semver::Version::new(self.major as u64, self.minor as u64, self.patch as u64)
     }
 
+    /// 验证器实现
     fn client(&self) -> ClientId {
         ClientId::from(self.client)
     }
 }
 
+/// 计算提交哈希
 fn compute_commit(sha1: Option<&'static str>) -> Option<u32> {
     u32::from_str_radix(sha1?.get(..8)?, /*radix:*/ 16).ok()
 }
 
 impl Default for Version {
+    /// 默认获取版本方法
     fn default() -> Self {
         let feature_set =
             u32::from_le_bytes(solana_feature_set::ID.as_ref()[..4].try_into().unwrap());
         Self {
+            // 跟着 crate 来
             major: env!("CARGO_PKG_VERSION_MAJOR").parse().unwrap(),
             minor: env!("CARGO_PKG_VERSION_MINOR").parse().unwrap(),
             patch: env!("CARGO_PKG_VERSION_PATCH").parse().unwrap(),
+            // 跟着仓库来
             commit: compute_commit(option_env!("CI_COMMIT")).unwrap_or_default(),
             feature_set,
             // Other client implementations need to modify this line.
@@ -70,12 +84,14 @@ impl Default for Version {
 }
 
 impl fmt::Display for Version {
+    /// 显示为语义化表示
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}.{}.{}", self.major, self.minor, self.patch,)
     }
 }
 
 impl fmt::Debug for Version {
+    /// 自己实现了 debug， 除了语义化版本，还有其他几个字段也打印出来了
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -126,6 +142,7 @@ macro_rules! semver {
     };
 }
 
+/// 用默认的方法获取，再用自己实现的 debug 打印方式打印
 #[macro_export]
 macro_rules! version {
     () => {

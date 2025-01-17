@@ -148,11 +148,14 @@ const SHRINK_COLLECT_CHUNK_SIZE: usize = 50;
 /// candidates for shrinking.
 const SHRINK_INSERT_ANCIENT_THRESHOLD: usize = 10;
 
+/// 古老存储创建方式
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum CreateAncientStorage {
     /// ancient storages are created by appending
+    /// 古老存储是通过追加创建的
     Append,
     /// ancient storages are created by 1-shot write to pack multiple accounts together more efficiently with new formats
+    /// 古老的存储是由一次写入创建的，以便更有效地将多个帐户与新格式打包在一起
     #[default]
     Pack,
 }
@@ -641,41 +644,67 @@ const DEFAULT_ANCIENT_STORAGE_IDEAL_SIZE: u64 = 100_000;
 /// combining should converge to.
 pub const DEFAULT_MAX_ANCIENT_STORAGES: usize = 100_000;
 
+/// 账户数据库设置
 #[derive(Debug, Default, Clone)]
 pub struct AccountsDbConfig {
+    /// 索引设置
     pub index: Option<AccountsIndexConfig>,
+    /// 索引设置？
     pub account_indexes: Option<AccountSecondaryIndexes>,
     /// Base directory for various necessary files
+    /// 各种必要文件的基本目录
     pub base_working_path: Option<PathBuf>,
+    /// 账户哈希缓存路径
     pub accounts_hash_cache_path: Option<PathBuf>,
+    /// 账户压缩路径
     pub shrink_paths: Option<Vec<PathBuf>>,
+    /// 账户压缩率
     pub shrink_ratio: AccountShrinkThreshold,
     /// The low and high watermark sizes for the read cache, in bytes.
     /// If None, defaults will be used.
+    /// 读缓存限制字节
     pub read_cache_limit_bytes: Option<(usize, usize)>,
+    /// 写缓存限制字节
     pub write_cache_limit_bytes: Option<u64>,
     /// if None, ancient append vecs are set to ANCIENT_APPEND_VEC_DEFAULT_OFFSET
     /// Some(offset) means include slots up to (max_slot - (slots_per_epoch - 'offset'))
+    /// 古老账户append vec里的偏移
     pub ancient_append_vec_offset: Option<i64>,
+    /// 古老账户存储理想的大小
     pub ancient_storage_ideal_size: Option<u64>,
+    /// 古老账户存储最大的大小
     pub max_ancient_storages: Option<usize>,
+    /// 哈希计算公钥分桶数
     pub hash_calculation_pubkey_bins: Option<usize>,
+    /// 跳过账户的重写操作，但仍然将这些账户状态包括在 bank hash 的计算中。
     pub test_skip_rewrites_but_include_in_bank_hash: bool,
+    /// 跳过初始化哈希计算
     pub skip_initial_hash_calc: bool,
+    /// 彻底验证引用计数
     pub exhaustively_verify_refcounts: bool,
     /// how to create ancient storages
+    /// 古老存储创建方式
     pub create_ancient_storage: CreateAncientStorage,
+    /// 分区epoch奖励的配置选项
     pub partitioned_epoch_rewards_config: PartitionedEpochRewardsConfig,
+    /// 存储访问方式
     pub storage_access: StorageAccess,
+    /// 压缩时的扫描过滤配置
     pub scan_filter_for_shrinking: ScanFilter,
+    /// 启用实验性的计算器哈希
     pub enable_experimental_accumulator_hash: bool,
+    /// 验证实验性的计算器哈希
     pub verify_experimental_accumulator_hash: bool,
+    /// 快照使用实验性的计算器哈希
     pub snapshots_use_experimental_accumulator_hash: bool,
     /// Number of threads for background cleaning operations (`thread_pool_clean')
+    /// 清理线程数
     pub num_clean_threads: Option<NonZeroUsize>,
     /// Number of threads for foreground operations (`thread_pool`)
+    /// 前台线程数
     pub num_foreground_threads: Option<NonZeroUsize>,
     /// Number of threads for background accounts hashing (`thread_pool_hash`)
+    /// 哈希线程数
     pub num_hash_threads: Option<NonZeroUsize>,
 }
 

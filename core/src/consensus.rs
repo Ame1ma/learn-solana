@@ -175,6 +175,7 @@ pub(crate) struct ComputedBankState {
     pub my_latest_landed_vote: Option<Slot>,
 }
 
+/// 版本化的塔
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub enum TowerVersions {
     V1_17_14(Tower1_7_14),
@@ -187,6 +188,7 @@ impl TowerVersions {
         Self::Current(tower)
     }
 
+    /// 转换旧塔为新塔
     pub fn convert_to_current(self) -> Tower {
         match self {
             TowerVersions::V1_17_14(tower) => {
@@ -236,6 +238,7 @@ pub(crate) enum BlockhashStatus {
     Blockhash(Hash),
 }
 
+/// 塔式共识
 #[cfg_attr(
     feature = "frozen-abi",
     derive(AbiExample),

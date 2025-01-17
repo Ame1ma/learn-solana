@@ -1,6 +1,7 @@
 use strum::{Display, EnumString, EnumVariantNames, IntoStaticStr, VariantNames};
 
 /// When should snapshot archives be used at startup?
+/// 启动时用不用归档的快照
 #[derive(
     Debug, Default, Clone, Copy, PartialEq, Eq, Display, EnumString, EnumVariantNames, IntoStaticStr,
 )]
@@ -8,15 +9,18 @@ use strum::{Display, EnumString, EnumVariantNames, IntoStaticStr, VariantNames};
 pub enum UseSnapshotArchivesAtStartup {
     /// If snapshot archives are used, they will be extracted and overwrite any existing state
     /// already on disk.  This will incur the associated runtime costs for extracting.
+    /// 总是，更慢
     Always,
     /// If snapshot archives are not used, then the local snapshot state already on disk is
     /// used instead.  If there is no local state on disk, startup will fail.
+    /// 从不，没有现成快照的话可能会启动失败
     Never,
     /// Only use snapshot archives if they are newer than the local snapshot state on disk.
     /// This can happen if a node is stopped and a new snapshot archive is downloaded before
     /// restarting.  At startup, the snapshot archive would be the newest and loaded from.
     /// Note, this also implies that snapshot archives will be used if there is no local snapshot
     /// state on disk.
+    /// 比现成的快照新则使用归档
     #[default]
     WhenNewest,
 }

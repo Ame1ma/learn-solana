@@ -81,17 +81,21 @@ pub(crate) struct GenerateIndexResult<T: IndexValue> {
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 /// which accounts `scan` should load from disk
+/// 扫描过滤器
 pub enum ScanFilter {
     /// Scan both in-memory and on-disk index
+    /// 扫描全部
     #[default]
     All,
 
     /// abnormal = ref_count != 1 or slot list.len() != 1
     /// Scan only in-memory index and skip on-disk index
+    /// 扫不正常的
     OnlyAbnormal,
 
     /// Similar to `OnlyAbnormal but also check on-disk index to verify the
     /// entry on-disk is indeed normal.
+    /// 扫验证过的不正常的
     OnlyAbnormalWithVerify,
 }
 
@@ -216,15 +220,23 @@ pub enum IndexLimitMb {
     InMemOnly,
 }
 
+/// 账户数据库索引设置
 #[derive(Debug, Default, Clone)]
 pub struct AccountsIndexConfig {
+    /// 分桶个数
     pub bins: Option<usize>,
+    /// 刷新线程数
     pub num_flush_threads: Option<NonZeroUsize>,
+    /// 驱动
     pub drives: Option<Vec<PathBuf>>,
+    /// 索引限制大小
     pub index_limit_mb: IndexLimitMb,
+    /// 留在缓存里的寿命
     pub ages_to_stay_in_cache: Option<Age>,
+    /// 扫描账户的结果限制字节数
     pub scan_results_limit_bytes: Option<usize>,
     /// true if the accounts index is being created as a result of being started as a validator (as opposed to test, etc.)
+    /// 如果帐户索引是作为验证器启动的结果而创建的，则为True（与test等相反）
     pub started_from_validator: bool,
 }
 
@@ -232,9 +244,12 @@ pub fn default_num_flush_threads() -> NonZeroUsize {
     NonZeroUsize::new(std::cmp::max(2, num_cpus::get() / 4)).expect("non-zero system threads")
 }
 
+/// 账户索引设置
 #[derive(Debug, Default, Clone)]
 pub struct AccountSecondaryIndexes {
+    /// 包含和排除 key
     pub keys: Option<AccountSecondaryIndexesIncludeExclude>,
+    /// 索引种类
     pub indexes: HashSet<AccountIndex>,
 }
 

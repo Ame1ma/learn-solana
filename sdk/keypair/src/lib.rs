@@ -189,7 +189,10 @@ impl EncodableKeypair for Keypair {
 }
 
 /// Reads a JSON-encoded `Keypair` from a `Reader` implementor
+/// 从满足 read trait的地方读取密钥对，可以从标准输入、文件之类的地方读，很好的抽象
+/// read 读出来的都是字节流
 pub fn read_keypair<R: Read>(reader: &mut R) -> Result<Keypair, Box<dyn error::Error>> {
+    // 读到 string 里
     let mut buffer = String::new();
     reader.read_to_string(&mut buffer)?;
     let trimmed = buffer.trim();
@@ -200,6 +203,7 @@ pub fn read_keypair<R: Read>(reader: &mut R) -> Result<Keypair, Box<dyn error::E
         )
         .into());
     }
+    // 手动解析 json，变成 bytes 数组
     // we already checked that the string has at least two chars,
     // so 1..trimmed.len() - 1 won't be out of bounds
     #[allow(clippy::arithmetic_side_effects)]
@@ -222,6 +226,7 @@ pub fn read_keypair<R: Read>(reader: &mut R) -> Result<Keypair, Box<dyn error::E
         let parsed: u8 = element.parse()?;
         out[idx] = parsed;
     }
+    // 转成密钥对
     Keypair::from_bytes(&out)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()).into())
 }

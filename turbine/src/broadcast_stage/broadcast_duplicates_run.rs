@@ -16,20 +16,27 @@ use {
 pub const MINIMUM_DUPLICATE_SLOT: Slot = 20;
 pub const DUPLICATE_RATE: usize = 10;
 
+/// 广播范围
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub enum ClusterPartition {
+    /// 质押量
     Stake(u64),
+    /// 节点公钥
     Pubkey(Vec<Pubkey>),
 }
 
+/// 主要用于 BroadcastDuplicates 阶段，在此阶段，节点将广播相同的 Shreds 或区块数据多次，
+/// 以便提高网络的健壮性、容错性或在某些测试场景下模拟重复数据的传播。
 #[derive(Clone, Debug)]
 pub struct BroadcastDuplicatesConfig {
     /// Amount of stake (excluding the leader) or a set of validator pubkeys
     /// to send a duplicate version of some slots to.
     /// Note this is sampled from a list of stakes sorted least to greatest.
+    /// 广播范围，质押量或者节点名单
     pub partition: ClusterPartition,
     /// If passed `Some(receiver)`, will signal all the duplicate slots via the given
     /// `receiver`
+    /// 发送重复的slot
     pub duplicate_slot_sender: Option<Sender<Slot>>,
 }
 

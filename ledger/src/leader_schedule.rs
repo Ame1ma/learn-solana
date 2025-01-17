@@ -7,16 +7,20 @@ use {
 };
 
 // Used for testing
+/// 固定的leader调度表，用于测试
 #[derive(Clone, Debug)]
 pub struct FixedSchedule {
     pub leader_schedule: Arc<LeaderSchedule>,
 }
 
 /// Stake-weighted leader schedule for one epoch.
+/// leader调度表
 #[derive(Debug, Default, PartialEq, Eq, Clone)]
 pub struct LeaderSchedule {
+    /// leader 列表
     slot_leaders: Vec<Pubkey>,
     // Inverted index from pubkeys to indices where they are the leader.
+    /// leader 在该纪元内的任期时隙索引，可以有多个任期
     index: HashMap<Pubkey, Arc<Vec<usize>>>,
 }
 

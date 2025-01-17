@@ -111,18 +111,28 @@ struct ProcessTransactionsResult {
     last_sent_time: Option<Instant>,
 }
 
+/// 发送交易的配置
+/// 投票什么的也是交易
 #[derive(Clone, Debug)]
 pub struct Config {
+    /// 重试频率
     pub retry_rate_ms: u64,
+    /// 转给多少个未来的leader
     pub leader_forward_count: u64,
+    /// 默认最大尝试次数
     pub default_max_retries: Option<usize>,
+    /// 服务最大尝试次数
     pub service_max_retries: usize,
     /// The batch size for sending transactions in batches
+    /// 发送批次大小
     pub batch_size: usize,
     /// How frequently batches are sent
+    /// 批次发送频率
     pub batch_send_rate_ms: u64,
     /// When the retry pool exceeds this max size, new transactions are dropped after their first broadcast attempt
+    /// 重试池大小
     pub retry_pool_max_size: usize,
+    /// 发给哪些 tpu
     pub tpu_peers: Option<Vec<SocketAddr>>,
 }
 

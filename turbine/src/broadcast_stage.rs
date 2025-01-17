@@ -97,11 +97,20 @@ pub enum BroadcastStageReturnType {
     ChannelDisconnected,
 }
 
+/// 广播阶段
 #[derive(Clone, Debug)]
 pub enum BroadcastStageType {
+    /// 这是标准的广播阶段，通常用于正常的数据广播流程。
+    /// 节点会在此阶段将区块（比如 Shreds 或其他区块数据）传播到网络中的其他节点。
     Standard,
+    /// 该阶段意味着区块数据的验证失败。这个阶段在发生验证错误时启用，
+    /// 通常是某些数据无法通过预设的验证规则时会进入该阶段。
     FailEntryVerification,
+    /// 这个阶段用于广播“假”数据（Fake Shreds）。这种状态下，节点会广播伪造的数据包。
+    /// 这在测试、调试或网络模拟等场景中可能是有用的。
     BroadcastFakeShreds,
+    /// 该阶段表示广播重复的数据包。在这个阶段，节点会广播相同的 Shreds 或数据多次。
+    /// 这个阶段可以用于测试容错性，确保节点能够处理重复数据，或者在某些情况下通过重复广播数据来提高网络的可靠性。
     BroadcastDuplicates(BroadcastDuplicatesConfig),
 }
 

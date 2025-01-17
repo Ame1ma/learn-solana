@@ -156,12 +156,17 @@ const WAIT_FOR_SUPERMAJORITY_THRESHOLD_PERCENT: u64 = 80;
 const WAIT_FOR_WEN_RESTART_SUPERMAJORITY_THRESHOLD_PERCENT: u64 =
     WAIT_FOR_SUPERMAJORITY_THRESHOLD_PERCENT;
 
+/// 块验证方法
 #[derive(
     Clone, EnumCount, EnumIter, EnumString, EnumVariantNames, Default, IntoStaticStr, Display,
 )]
 #[strum(serialize_all = "kebab-case")]
 pub enum BlockVerificationMethod {
+    /// 从 Blockstore（Solana 的持久化存储）中读取数据，并验证区块是否有效。
+    /// 通常情况下，验证器节点会使用该方法来确保区块的完整性和正确性。
     BlockstoreProcessor,
+    /// UnifiedScheduler 是另一种区块验证方法，它将验证过程与 调度器 结合在一起。
+    /// 调度器负责管理和安排事务的执行和验证工作。使用这种方法时，验证工作是由调度器协调的，可能会涉及更加精细的控制和资源分配。
     #[default]
     UnifiedScheduler,
 }
@@ -183,9 +188,11 @@ impl BlockVerificationMethod {
     }
 }
 
+/// 块生产方法，只有一个中心调度，可能是因为同时只有一个leader？
 #[derive(Clone, EnumString, EnumVariantNames, Default, IntoStaticStr, Display)]
 #[strum(serialize_all = "kebab-case")]
 pub enum BlockProductionMethod {
+    /// 只有一个中心调度，可能是因为同时只有一个leader？
     #[default]
     CentralScheduler,
 }
@@ -207,83 +214,180 @@ impl BlockProductionMethod {
     }
 }
 
+// **生成器失效器（Block Generator Invalidator）** 是 **Solana** 或类似区块链系统中的一个组件，主要用于在区块生成过程中确保某些条件不被违反，或者在出现异常的情况下使得区块生成器停止工作或重置。这一机制通常用于验证和调整区块的生成过程，确保生成的区块符合预定规则，或者在某些条件下使生成过程无效。
+// ### **生成器（Block Generator）**
+// 首先，让我们回顾一下 **区块生成器（Block Generator）** 的功能。区块生成器的任务是生成新的区块并将其加入区块链。生成器通常会从区块链网络中获取交易、账户状态等信息，然后通过一些共识算法来生成新区块。在 Solana 中，区块生成器通常负责以下操作：
+// - 接收和处理交易。
+// - 验证交易是否合法。
+// - 生成新的区块并广播到网络。
+// ### **失效器（Invalidator）**
+// **失效器（Invalidator）** 在这里的作用是，在某些条件下使区块生成过程“失效”。失效器会检查生成的区块或相关的操作是否合法，如果发现任何不合规的情况，可能会停止当前的区块生成，或者触发某种恢复机制。失效器通常在以下几种情况下发挥作用：
+// - **区块不合法**：例如，区块的某些内容不符合网络共识或其他协议规则，失效器将使生成过程失败，防止无效区块被添加到链上。
+// - **重复生成**：如果区块生成器误操作导致生成重复区块或不必要的区块，失效器可能会使这些区块无效。
+// - **不符合时间条件**：如果生成的区块或其包含的交易不符合时间要求，失效器可以阻止其继续生成。
+// - **异常处理**：当区块生成过程中发生某些异常情况时，失效器负责处理这些异常，可能会使当前生成的区块无效或触发错误处理流程。
+// ### **与重放（Replay）相关**
+// `GeneratorConfig` 结构体中的配置，特别是 `accounts_path` 和 `starting_keypairs` 字段，可能会在与 **重放（replay）** 过程相关的场景中使用。例如，当系统需要重放某些区块（比如恢复或验证某些历史区块）时，失效器可能会参与其中，确保只有符合条件的区块被重放。
+// ### **总结**
+// 生成器失效器（Block Generator Invalidator）是区块生成过程中的一种机制，用于确保区块生成符合预定规则。在一些异常情况下，它会使生成的区块无效或停止当前的生成操作。失效器通常用于区块链的验证、重放等过程中，防止无效区块或错误区块进入区块链网络，保证网络的一致性和安全性。
+
 /// Configuration for the block generator invalidator for replay.
+/// 用于配置区块生成器（Block Generator）失效器（Invalidator）的一种结构体。
+/// 它主要涉及与重放（replay）过程相关的配置，定义了区块生成器的相关路径和密钥对等重要参数。
 #[derive(Clone, Debug)]
 pub struct GeneratorConfig {
+    /// 账户路径
     pub accounts_path: String,
+    /// 提供用于交易签名的密钥对集合。
     pub starting_keypairs: Arc<Vec<Keypair>>,
 }
 
+/// 验证器配置
 pub struct ValidatorConfig {
+    /// 在某个时隙处暂停
     pub halt_at_slot: Option<Slot>,
+    /// 期望的创世区块哈希
     pub expected_genesis_hash: Option<Hash>,
+    /// 期望的银行哈希
     pub expected_bank_hash: Option<Hash>,
+    /// 期望的碎屑版本
     pub expected_shred_version: Option<u16>,
+    /// 不投票
     pub voting_disabled: bool,
+    /// 账户路径，支持多个
     pub account_paths: Vec<PathBuf>,
+    /// 账户快照路径，支持多个
     pub account_snapshot_paths: Vec<PathBuf>,
+    /// rpc 相关设置
     pub rpc_config: JsonRpcConfig,
     /// Specifies which plugins to start up with
+    /// geyser 插件配置文件
     pub on_start_geyser_plugin_config_files: Option<Vec<PathBuf>>,
+    /// geyser 插件总是启用
     pub geyser_plugin_always_enabled: bool,
+    /// rpc 地址和 订阅类 rpc 地址
     pub rpc_addrs: Option<(SocketAddr, SocketAddr)>, // (JsonRpc, JsonRpcPubSub)
+    /// 订阅类 rpc 配置
     pub pubsub_config: PubSubConfig,
+    /// 快照配置
     pub snapshot_config: SnapshotConfig,
+    /// 最大账本碎屑限制
+    /// 用于控制每个 区块（block） 可以包含的最大 账本碎片 数量。
+    /// 这个参数与 Solana 的账本存储和数据传播机制密切相关，影响节点如何处理账本数据以及网络中的数据传输效率
     pub max_ledger_shreds: Option<u64>,
+    /// 块存储配置
     pub blockstore_options: BlockstoreOptions,
+    /// 广播阶段配置
     pub broadcast_stage_type: BroadcastStageType,
+    /// 关闭涡轮块传播
     pub turbine_disabled: Arc<AtomicBool>,
+    /// 用固定的leader调度表
     pub fixed_leader_schedule: Option<FixedSchedule>,
+    /// 用于在特定的网络升级或恢复过程中，确保验证器节点等待某个时隙达到超级多数（Supermajority）状态后才开始参与运行。
+    /// 超级多数：指在网络中，超过 66% 的质押投票权已经通过指定的区块高度。
     pub wait_for_supermajority: Option<Slot>,
+    /// 新的硬分叉
     pub new_hard_forks: Option<Vec<Slot>>,
+    /// 只信任这些节点，和这些节点八卦
     pub known_validators: Option<HashSet<Pubkey>>, // None = trust all
+    /// 修复数据来源
     pub repair_validators: Option<HashSet<Pubkey>>, // None = repair from all
+    /// 修复数据优先来源
     pub repair_whitelist: Arc<RwLock<HashSet<Pubkey>>>, // Empty = repair with all
+    /// 初始的八卦节点
     pub gossip_validators: Option<HashSet<Pubkey>>, // None = gossip with all
+    /// 账户哈希多久验证一次
     pub accounts_hash_interval_slots: u64,
+    /// 创世块归档最大体积
     pub max_genesis_archive_unpacked_size: u64,
     /// Run PoH, transaction signature and other transaction verifications during blockstore
     /// processing.
+    /// 在块生产过程中验证 poh、交易签名
     pub run_verification: bool,
+    /// 需要有保存好的塔式共识状态
     pub require_tower: bool,
+    /// 塔式共识存储方案、文件或etcd
     pub tower_storage: Arc<dyn TowerStorage>,
+    /// 请求带debug key会打印详细日志
     pub debug_keys: Option<Arc<HashSet<Pubkey>>>,
+    /// 打印八卦连接debug信息的时间间隔，默认 120000 毫秒
     pub contact_debug_interval: u64,
+    /// 保存节点与其他节点联系信息的时间间隔
     pub contact_save_interval: u64,
+    /// 发送交易的配置
     pub send_transaction_service_config: send_transaction_service::Config,
+    /// 不进行 poh 速度测试
     pub no_poh_speed_test: bool,
+    /// 不汇报内存状态
     pub no_os_memory_stats_reporting: bool,
+    /// 不汇报网络状态
     pub no_os_network_stats_reporting: bool,
+    /// 不汇报cpu状态
     pub no_os_cpu_stats_reporting: bool,
+    /// 不汇报硬盘状态
     pub no_os_disk_stats_reporting: bool,
+    /// poh固定在某个cpu核上
     pub poh_pinned_cpu_core: usize,
+    /// poh 每个批次做多少次hash
     pub poh_hashes_per_batch: u64,
+    /// 开放服务前先处理完账本
     pub process_ledger_before_services: bool,
+    /// 账户数据库设置
     pub accounts_db_config: Option<AccountsDbConfig>,
+    /// warp-slot 是一个机制，允许 Solana 的网络或验证器快速跳跃到 更高的 Slot，而不需要等待所有中间的区块依次处理。
+    /// 这意味着系统能够 绕过 一些区块，直接跳到某个指定的 Slot，以便在需要时提高系统的效率或者为了调试/测试目的。
     pub warp_slot: Option<Slot>,
+    /// 账户数据库测试哈希计算
     pub accounts_db_test_hash_calculation: bool,
+    /// 账户数据库跳过压缩
     pub accounts_db_skip_shrink: bool,
+    /// 账户数据库强制初始化清理
     pub accounts_db_force_initial_clean: bool,
+    /// tpu 报文多久合并一次
     pub tpu_coalesce: Duration,
+    /// 覆盖节点质押量
     pub staked_nodes_overrides: Arc<RwLock<HashMap<Pubkey, u64>>>,
+    /// 准备退出
     pub validator_exit: Arc<RwLock<Exit>>,
+    /// 验证器是否必须在开始生成新区块（担任 Leader）之前提交至少一次有效的投票（Vote）。
     pub no_wait_for_vote_to_start_leader: bool,
+    /// 等到投票某个时隙
     pub wait_to_vote_slot: Option<Slot>,
+    /// sealevel 运行时配置
     pub runtime_config: RuntimeConfig,
+    /// 银行追踪目录大小限制
     pub banking_trace_dir_byte_limit: banking_trace::DirByteLimit,
+    /// 块验证方法
     pub block_verification_method: BlockVerificationMethod,
+    /// 块生产方法
     pub block_production_method: BlockProductionMethod,
+    /// 启用块生产转发
     pub enable_block_production_forwarding: bool,
+    /// 生成器失效器配置
     pub generator_config: Option<GeneratorConfig>,
+    /// 启动时用不用归档的快照
     pub use_snapshot_archives_at_startup: UseSnapshotArchivesAtStartup,
+    /// 协调集群重启 proto 文件路径
     pub wen_restart_proto_path: Option<PathBuf>,
+    /// 协调集群重启 协调器
     pub wen_restart_coordinator: Option<Pubkey>,
+    /// 统一调度事务线程数
+    /// UnifiedScheduler 是 Solana 中的一个调度器组件，用于协调和安排系统内的各种任务和资源调度，特别是在处理区块生成和交易验证时的资源分配。
+    /// UnifiedScheduler 的设计重点在于统一管理 Solana 系统中的各种任务调度，而不是将每个任务的调度完全独立开来。
+    /// 它将多个任务的调度合并为一个系统，简化了资源管理和任务协调。
+    /// 与传统的分散调度策略相比，统一调度器通常能提供更高效的资源利用和更低的任务间冲突。
     pub unified_scheduler_handler_threads: Option<usize>,
+    /// ip echo 服务器线程数
     pub ip_echo_server_threads: NonZeroUsize,
+    /// rayon 全局线程数
     pub rayon_global_threads: NonZeroUsize,
+    /// 重放分叉线程数
     pub replay_forks_threads: NonZeroUsize,
+    /// 重放交易线程数
     pub replay_transactions_threads: NonZeroUsize,
+    /// tvu 碎屑验证线程数
     pub tvu_shred_sigverify_threads: NonZeroUsize,
+    /// 区块链的领导者（leader）创建新区块时，是否等待一个尚未确认的分叉区块（pending fork）完成重放。
     pub delay_leader_block_for_pending_fork: bool,
 }
 

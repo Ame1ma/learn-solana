@@ -566,24 +566,35 @@ fn configure_banking_trace_dir_byte_limit(
 }
 
 pub fn main() {
-    // 默认配置，用来在命令行提示中显示默认值，并且作为实际的默认值
+    /// 默认配置，用来在命令行提示中显示默认值，并且作为实际的默认值
     let default_args = DefaultArgs::new();
+    /// 获取 solana 版本，crate 的版本，仓库的哈希
     let solana_version = solana_version::version!();
+    /// 解析命令行参数
     let cli_app = app(solana_version, &default_args);
     let matches = cli_app.get_matches();
+    /// 警告弃用的参数
     warn_for_deprecated_arguments(&matches);
 
+    /// ip范围，只监听公网，还是内网公网都可以
     let socket_addr_space = SocketAddrSpace::new(matches.is_present("allow_private_addr"));
+    /// 账本路径
     let ledger_path = PathBuf::from(matches.value_of("ledger_path").unwrap());
 
+    /// 子命令，除了运行验证器主程序之外的命令，都直接在匹配支上解决
     let operation = match matches.subcommand() {
+        /// 默认是运行验证器主程序
         ("", _) | ("run", _) => Operation::Run,
+        /// 管理 投票者账户
         ("authorized-voter", Some(authorized_voter_subcommand_matches)) => {
             match authorized_voter_subcommand_matches.subcommand() {
+                /// 添加 投票者账户
                 ("add", Some(subcommand_matches)) => {
+                    /// 取密钥对路径
                     if let Ok(authorized_voter_keypair) =
                         value_t!(subcommand_matches, "authorized_voter_keypair", String)
                     {
+                        /// canonicalize 在路径不存在时就会报错
                         let authorized_voter_keypair = fs::canonicalize(&authorized_voter_keypair)
                             .unwrap_or_else(|err| {
                                 println!(
@@ -596,11 +607,14 @@ pub fn main() {
                             authorized_voter_keypair.display()
                         );
 
+                        /// 要用本地 rpc 来添加
                         let admin_client = admin_rpc_service::connect(&ledger_path);
+                        /// tokio 阻塞线程
                         admin_rpc_service::runtime()
                             .block_on(async move {
                                 admin_client
                                     .await?
+                                    /// 添加投票者的 rpc
                                     .add_authorized_voter(
                                         authorized_voter_keypair.display().to_string(),
                                     )
@@ -611,6 +625,7 @@ pub fn main() {
                                 exit(1);
                             });
                     } else {
+                        /// 没从参数指定密钥对的话，就从标准输入取
                         let mut stdin = std::io::stdin();
                         let authorized_voter_keypair =
                             read_keypair(&mut stdin).unwrap_or_else(|err| {
@@ -622,6 +637,7 @@ pub fn main() {
                             authorized_voter_keypair.pubkey()
                         );
 
+                        /// 要用本地 rpc 来添加
                         let admin_client = admin_rpc_service::connect(&ledger_path);
                         admin_rpc_service::runtime()
                             .block_on(async move {
@@ -640,7 +656,9 @@ pub fn main() {
 
                     return;
                 }
+                /// 移除所有投票者
                 ("remove-all", _) => {
+                    /// 靠发送本地 admin rpc 请求，走本地文件socket，所以很安全
                     let admin_client = admin_rpc_service::connect(&ledger_path);
                     admin_rpc_service::runtime()
                         .block_on(async move {
@@ -656,8 +674,10 @@ pub fn main() {
                 _ => unreachable!(),
             }
         }
+        /// 管理 geyser 插件，依然是靠本地 rpc
         ("plugin", Some(plugin_subcommand_matches)) => {
             match plugin_subcommand_matches.subcommand() {
+                /// 列出插件
                 ("list", _) => {
                     let admin_client = admin_rpc_service::connect(&ledger_path);
                     let plugins = admin_rpc_service::runtime()
@@ -676,6 +696,7 @@ pub fn main() {
                     }
                     return;
                 }
+                /// 上传插件
                 ("unload", Some(subcommand_matches)) => {
                     if let Ok(name) = value_t!(subcommand_matches, "name", String) {
                         let admin_client = admin_rpc_service::connect(&ledger_path);
@@ -691,6 +712,7 @@ pub fn main() {
                     }
                     return;
                 }
+                /// 加载插件
                 ("load", Some(subcommand_matches)) => {
                     if let Ok(config) = value_t!(subcommand_matches, "config", String) {
                         let admin_client = admin_rpc_service::connect(&ledger_path);
@@ -706,6 +728,7 @@ pub fn main() {
                     }
                     return;
                 }
+                /// 重新加载插件
                 ("reload", Some(subcommand_matches)) => {
                     if let Ok(name) = value_t!(subcommand_matches, "name", String) {
                         if let Ok(config) = value_t!(subcommand_matches, "config", String) {
@@ -729,6 +752,7 @@ pub fn main() {
                 _ => unreachable!(),
             }
         }
+        /// 打印通信信息
         ("contact-info", Some(subcommand_matches)) => {
             let output_mode = subcommand_matches.value_of("output");
             let admin_client = admin_rpc_service::connect(&ledger_path);
@@ -749,7 +773,9 @@ pub fn main() {
             }
             return;
         }
+        /// 不实际启动，但是做启动工作，和启动后立刻停掉差不多
         ("init", _) => Operation::Initialize,
+        /// 退出正在运行的验证器
         ("exit", Some(subcommand_matches)) => {
             let min_idle_time = value_t_or_exit!(subcommand_matches, "min_idle_time", usize);
             let force = subcommand_matches.is_present("force");
@@ -759,6 +785,7 @@ pub fn main() {
             let max_delinquent_stake =
                 value_t_or_exit!(subcommand_matches, "max_delinquent_stake", u8);
 
+            /// 不是强制的就先等合适的时机，因为这个函数，所以也要传那些跳过检查的选项进来
             if !force {
                 wait_for_restart_window(
                     &ledger_path,
@@ -774,6 +801,7 @@ pub fn main() {
                 });
             }
 
+            /// 依然是用 rpc
             let admin_client = admin_rpc_service::connect(&ledger_path);
             admin_rpc_service::runtime()
                 .block_on(async move { admin_client.await?.exit().await })
@@ -783,15 +811,18 @@ pub fn main() {
                 });
             println!("Exit request sent");
 
+            /// 监控关闭状态
             if monitor {
                 monitor_validator(&ledger_path);
             }
             return;
         }
+        /// 监控验证器
         ("monitor", _) => {
             monitor_validator(&ledger_path);
             return;
         }
+        /// 覆盖质押节点，本地 rpc
         ("staked-nodes-overrides", Some(subcommand_matches)) => {
             if !subcommand_matches.is_present("path") {
                 println!(
@@ -816,6 +847,7 @@ pub fn main() {
                 });
             return;
         }
+        /// 重设节点身份，本地 rpc
         ("set-identity", Some(subcommand_matches)) => {
             let require_tower = subcommand_matches.is_present("require_tower");
 
@@ -868,6 +900,7 @@ pub fn main() {
 
             return;
         }
+        /// 设置 log 过滤器，本地 rpc
         ("set-log-filter", Some(subcommand_matches)) => {
             let filter = value_t_or_exit!(subcommand_matches, "filter", String);
             let admin_client = admin_rpc_service::connect(&ledger_path);
@@ -879,6 +912,7 @@ pub fn main() {
                 });
             return;
         }
+        /// 看看是否适合重启
         ("wait-for-restart-window", Some(subcommand_matches)) => {
             let min_idle_time = value_t_or_exit!(subcommand_matches, "min_idle_time", usize);
             let identity = pubkey_of(subcommand_matches, "identity");
@@ -901,6 +935,7 @@ pub fn main() {
             });
             return;
         }
+        /// 从别的节点拉取数据，修复碎屑，本地 rpc
         ("repair-shred-from-peer", Some(subcommand_matches)) => {
             let pubkey = value_t!(subcommand_matches, "pubkey", Pubkey).ok();
             let slot = value_t_or_exit!(subcommand_matches, "slot", u64);
@@ -919,8 +954,10 @@ pub fn main() {
                 });
             return;
         }
+        /// 管理白名单
         ("repair-whitelist", Some(repair_whitelist_subcommand_matches)) => {
             match repair_whitelist_subcommand_matches.subcommand() {
+                /// 获取
                 ("get", Some(subcommand_matches)) => {
                     let output_mode = subcommand_matches.value_of("output");
                     let admin_client = admin_rpc_service::connect(&ledger_path);
@@ -946,6 +983,7 @@ pub fn main() {
                     }
                     return;
                 }
+                /// 设置
                 ("set", Some(subcommand_matches)) => {
                     let whitelist = if subcommand_matches.is_present("whitelist") {
                         let validators_set: HashSet<_> =
@@ -962,6 +1000,7 @@ pub fn main() {
                     });
                     return;
                 }
+                /// 删除全部
                 ("remove-all", _) => {
                     set_repair_whitelist(&ledger_path, Vec::default()).unwrap_or_else(|err| {
                         eprintln!("{err}");
@@ -972,6 +1011,7 @@ pub fn main() {
                 _ => unreachable!(),
             }
         }
+        /// 重设公网监听地址，本地 rpc
         ("set-public-address", Some(subcommand_matches)) => {
             let parse_arg_addr = |arg_name: &str, arg_long: &str| -> Option<SocketAddr> {
                 subcommand_matches.value_of(arg_name).map(|host_port| {
@@ -1013,6 +1053,7 @@ pub fn main() {
         _ => unreachable!(),
     };
 
+    /// 解构线程数设置
     let cli::thread_args::NumThreadConfig {
         accounts_db_clean_threads,
         accounts_db_foreground_threads,
@@ -1028,6 +1069,7 @@ pub fn main() {
         tvu_sigverify_threads,
     } = cli::thread_args::parse_num_threads_args(&matches);
 
+    /// 取验证器公钥
     let identity_keypair = keypair_of(&matches, "identity").unwrap_or_else(|| {
         clap::Error::with_description(
             "The --identity <KEYPAIR> argument is required",
@@ -1036,6 +1078,7 @@ pub fn main() {
         .exit();
     });
 
+    /// 取日志路径
     let logfile = {
         let logfile = matches
             .value_of("logfile")
@@ -1050,19 +1093,25 @@ pub fn main() {
         }
     };
     let use_progress_bar = logfile.is_none();
+    /// 重定向到文件
     let _logger_thread = redirect_stderr_to_file(logfile);
 
+    /// 打印版本，回显启动参数
     info!("{} {}", crate_name!(), solana_version);
     info!("Starting validator with: {:#?}", std::env::args_os());
 
+    /// 初始化 cuda
     let cuda = matches.is_present("cuda");
     if cuda {
         solana_perf::perf_libs::init_cuda();
         enable_recycler_warming();
     }
 
+    /// 打印 cuda 和 avx 情况
     solana_core::validator::report_target_features();
 
+    
+    /// 投票者账户
     let authorized_voter_keypairs = keypairs_of(&matches, "authorized_voter_keypairs")
         .map(|keypairs| keypairs.into_iter().map(Arc::new).collect())
         .unwrap_or_else(|| {
@@ -1072,6 +1121,7 @@ pub fn main() {
         });
     let authorized_voter_keypairs = Arc::new(RwLock::new(authorized_voter_keypairs));
 
+    /// 质押账户覆盖，得到一个 公钥 到 新质押值 的映射表
     let staked_nodes_overrides_path = matches
         .value_of("staked_nodes_overrides")
         .map(str::to_string);
@@ -1090,8 +1140,10 @@ pub fn main() {
         .staked_map_id,
     ));
 
+    /// 初始化完成文件
     let init_complete_file = matches.value_of("init_complete_file");
 
+    /// rpc 相关的配置
     let rpc_bootstrap_config = bootstrap::RpcBootstrapConfig {
         no_genesis_fetch: matches.is_present("no_genesis_fetch"),
         no_snapshot_fetch: matches.is_present("no_snapshot_fetch"),
@@ -1107,13 +1159,17 @@ pub fn main() {
         incremental_snapshot_fetch: !matches.is_present("no_incremental_snapshots"),
     };
 
+    /// 私有 rpc
     let private_rpc = matches.is_present("private_rpc");
+    /// 不做端口检查
     let do_port_check = !matches.is_present("no_port_check");
+    /// tpu 数据包报文合并等待秒数
     let tpu_coalesce = value_t!(matches, "tpu_coalesce_ms", u64)
         .map(Duration::from_millis)
         .unwrap_or(DEFAULT_TPU_COALESCE);
 
     // Canonicalize ledger path to avoid issues with symlink creation
+    /// 账本路径
     let ledger_path = create_and_canonicalize_directories([&ledger_path])
         .unwrap_or_else(|err| {
             eprintln!(
@@ -1125,10 +1181,14 @@ pub fn main() {
         .pop()
         .unwrap();
 
+    /// wal 恢复模式
+    /// WAL 是一种用于确保数据库一致性的日志机制，常用于处理事务和保证数据的持久性。
+    /// Solana 使用 WAL 来记录区块链中的重要状态和交易信息，以便在节点崩溃或重启时进行恢复。
     let recovery_mode = matches
         .value_of("wal_recovery_mode")
         .map(BlockstoreRecoveryMode::from);
 
+    /// 限制账本大小
     let max_ledger_shreds = if matches.is_present("limit_ledger_size") {
         let limit_ledger_size = match matches.value_of("limit_ledger_size") {
             Some(_) => value_t_or_exit!(matches, "limit_ledger_size", u64),
@@ -1146,6 +1206,7 @@ pub fn main() {
         None
     };
 
+    /// rockdbs 压缩算法和方式
     let column_options = LedgerColumnOptions {
         compression_type: match matches.value_of("rocksdb_ledger_compression") {
             None => BlockstoreCompressionType::default(),
@@ -1164,6 +1225,7 @@ pub fn main() {
         ),
     };
 
+    /// rockdbs 的相关配置，也就是块存储的相关配置
     let blockstore_options = BlockstoreOptions {
         recovery_mode,
         column_options,
@@ -1176,6 +1238,7 @@ pub fn main() {
         num_rocksdb_flush_threads: rocksdb_flush_threads,
     };
 
+    /// 账户缓存路径
     let accounts_hash_cache_path = matches
         .value_of("accounts_hash_cache_path")
         .map(Into::into)
@@ -1191,6 +1254,7 @@ pub fn main() {
         .pop()
         .unwrap();
 
+    /// debug key 带上这个的请求会详细打印日志
     let debug_keys: Option<Arc<HashSet<_>>> = if matches.is_present("debug_key") {
         Some(Arc::new(
             values_t_or_exit!(matches, "debug_key", Pubkey)
@@ -1201,18 +1265,21 @@ pub fn main() {
         None
     };
 
+    /// 信任的验证器
     let known_validators = validators_set(
         &identity_keypair.pubkey(),
         &matches,
         "known_validators",
         "--known-validator",
     );
+    /// 修复来源验证器
     let repair_validators = validators_set(
         &identity_keypair.pubkey(),
         &matches,
         "repair_validators",
         "--repair-validator",
     );
+    /// 高优先级修复来源
     let repair_whitelist = validators_set(
         &identity_keypair.pubkey(),
         &matches,
@@ -1220,6 +1287,7 @@ pub fn main() {
         "--repair-whitelist",
     );
     let repair_whitelist = Arc::new(RwLock::new(repair_whitelist.unwrap_or_default()));
+    /// 八卦验证器
     let gossip_validators = validators_set(
         &identity_keypair.pubkey(),
         &matches,
@@ -1227,8 +1295,10 @@ pub fn main() {
         "--gossip-validator",
     );
 
+    /// 总监听地址
     let bind_address = solana_net_utils::parse_host(matches.value_of("bind_address").unwrap())
         .expect("invalid bind_address");
+    /// rpc 监听地址
     let rpc_bind_address = if matches.is_present("rpc_bind_address") {
         solana_net_utils::parse_host(matches.value_of("rpc_bind_address").unwrap())
             .expect("invalid rpc_bind_address")
@@ -1238,26 +1308,36 @@ pub fn main() {
         bind_address
     };
 
+    /// 打印八卦连接debug信息的时间间隔，默认 120000 毫秒
     let contact_debug_interval = value_t_or_exit!(matches, "contact_debug_interval", u64);
 
+    /// 账户索引相关的配置
     let account_indexes = process_account_indexes(&matches);
 
+    /// 修复模式启动，不投票和发消息
     let restricted_repair_only_mode = matches.is_present("restricted_repair_only_mode");
+    /// 压缩稀疏账户来减少空间占用
     let accounts_shrink_optimize_total_space =
         value_t_or_exit!(matches, "accounts_shrink_optimize_total_space", bool);
+    /// tpu 使用 quic
     let tpu_use_quic = !matches.is_present("tpu_disable_quic");
+    /// 投票使用 quic
     let vote_use_quic = value_t_or_exit!(matches, "vote_use_quic", bool);
 
+    /// tpu 使用 udp
     let tpu_enable_udp = if matches.is_present("tpu_enable_udp") {
         true
     } else {
         DEFAULT_TPU_ENABLE_UDP
     };
 
+    /// tpu 连接池大小
     let tpu_connection_pool_size = value_t_or_exit!(matches, "tpu_connection_pool_size", usize);
+    /// tpu 最大连接数每地址每分钟
     let tpu_max_connections_per_ipaddr_per_minute =
         value_t_or_exit!(matches, "tpu_max_connections_per_ipaddr_per_minute", u64);
 
+    /// 账户压缩比
     let shrink_ratio = value_t_or_exit!(matches, "accounts_shrink_ratio", f64);
     if !(0.0..=1.0).contains(&shrink_ratio) {
         eprintln!(
@@ -1272,6 +1352,7 @@ pub fn main() {
     } else {
         AccountShrinkThreshold::IndividualStore { shrink_ratio }
     };
+    /// 初始的八卦交流对象
     let entrypoint_addrs = values_t!(matches, "entrypoint", String)
         .unwrap_or_default()
         .into_iter()
@@ -1290,6 +1371,7 @@ pub fn main() {
             exit(1);
         }
     }
+    /// 预期碎屑版本
     // TODO: Once entrypoints are updated to return shred-version, this should
     // abort if it fails to obtain a shred-version, so that nodes always join
     // gossip with a valid shred-version. The code to adopt entrypoint shred
@@ -1298,6 +1380,7 @@ pub fn main() {
         .ok()
         .or_else(|| get_cluster_shred_version(&entrypoint_addrs));
 
+    /// 塔式共识存储，两种，FileTowerStorage 和 EtcdTowerStorage
     let tower_storage: Arc<dyn tower_storage::TowerStorage> =
         match value_t_or_exit!(matches, "tower_storage", String).as_str() {
             "file" => {
@@ -1339,15 +1422,18 @@ pub fn main() {
             _ => unreachable!(),
         };
 
+    /// 账户索引配置
     let mut accounts_index_config = AccountsIndexConfig {
         started_from_validator: true, // this is the only place this is set
         num_flush_threads: Some(accounts_index_flush_threads),
         ..AccountsIndexConfig::default()
     };
+    /// accounts_index_bins 是用于调整账户索引的 分桶数量，即将账户索引的存储结构分成若干个“桶”，每个桶对应一部分账户的哈希值范围。
     if let Ok(bins) = value_t!(matches, "accounts_index_bins", usize) {
         accounts_index_config.bins = Some(bins);
     }
 
+    /// 账户索引大小限制
     accounts_index_config.index_limit_mb = if matches.is_present("disable_accounts_disk_index") {
         IndexLimitMb::InMemOnly
     } else {
@@ -1370,11 +1456,13 @@ pub fn main() {
     }
 
     const MB: usize = 1_024 * 1_024;
+    /// 扫描结果大小限制
     accounts_index_config.scan_results_limit_bytes =
         value_t!(matches, "accounts_index_scan_results_limit_mb", usize)
             .ok()
             .map(|mb| mb * MB);
 
+    /// 账户压缩存储路径
     let account_shrink_paths: Option<Vec<PathBuf>> =
         values_t!(matches, "account_shrink_path", String)
             .map(|shrink_paths| shrink_paths.into_iter().map(PathBuf::from).collect())
@@ -1394,6 +1482,7 @@ pub fn main() {
         })
         .unzip();
 
+    /// 读缓存限制字节
     let read_cache_limit_bytes = values_of::<usize>(&matches, "accounts_db_read_cache_limit_mb")
         .map(|limits| {
             match limits.len() {
@@ -1409,6 +1498,7 @@ pub fn main() {
                 }
             }
         });
+    /// 古老账户设置
     let create_ancient_storage = matches
         .value_of("accounts_db_squash_storages_method")
         .map(|method| match method {
@@ -1420,6 +1510,7 @@ pub fn main() {
             }
         })
         .unwrap_or_default();
+    /// 访问存储方法
     let storage_access = matches
         .value_of("accounts_db_access_storages_method")
         .map(|method| match method {
@@ -1432,6 +1523,7 @@ pub fn main() {
         })
         .unwrap_or_default();
 
+    /// 压缩账户的扫描过滤
     let scan_filter_for_shrinking = matches
         .value_of("accounts_db_scan_filter_for_shrinking")
         .map(|filter| match filter {
@@ -1445,6 +1537,7 @@ pub fn main() {
         })
         .unwrap_or_default();
 
+    /// rockdbs 相关设置
     let accounts_db_config = AccountsDbConfig {
         index: Some(accounts_index_config),
         account_indexes: Some(account_indexes.clone()),
@@ -1490,6 +1583,7 @@ pub fn main() {
 
     let accounts_db_config = Some(accounts_db_config);
 
+    /// geyser 插件配置
     let on_start_geyser_plugin_config_files = if matches.is_present("geyser_plugin_config") {
         Some(
             values_t_or_exit!(matches, "geyser_plugin_config", String)
@@ -1503,6 +1597,7 @@ pub fn main() {
     let starting_with_geyser_plugins: bool = on_start_geyser_plugin_config_files.is_some()
         || matches.is_present("geyser_plugin_always_enabled");
 
+    /// rpc 谷歌大表配置
     let rpc_bigtable_config = if matches.is_present("enable_rpc_bigtable_ledger_storage")
         || matches.is_present("enable_bigtable_ledger_upload")
     {
@@ -1523,6 +1618,7 @@ pub fn main() {
         None
     };
 
+    /// rpc 发送相关配置
     let rpc_send_retry_rate_ms = value_t_or_exit!(matches, "rpc_send_transaction_retry_ms", u64);
     let rpc_send_batch_size = value_t_or_exit!(matches, "rpc_send_transaction_batch_size", usize);
     let rpc_send_batch_send_rate_ms =
@@ -1536,6 +1632,7 @@ pub fn main() {
         exit(1);
     }
 
+    /// 检查是否超速
     let tps = rpc_send_batch_size as u64 * MILLIS_PER_SECOND / rpc_send_batch_send_rate_ms;
     if tps > send_transaction_service::MAX_TRANSACTION_SENDS_PER_SECOND {
         eprintln!(
@@ -1547,6 +1644,7 @@ pub fn main() {
         );
         exit(1);
     }
+    /// 要转发到的tpu对等体配置
     let rpc_send_transaction_tpu_peers = matches
         .values_of("rpc_send_transaction_tpu_peer")
         .map(|values| {
@@ -1568,8 +1666,10 @@ pub fn main() {
             value_t_or_exit!(matches, "rpc_send_transaction_leader_forward_count", u64)
         };
 
+    /// 是否开放全部 rpc api
     let full_api = matches.is_present("full_rpc_api");
 
+    /// 验证器配置，到这里还只是部分配置
     let mut validator_config = ValidatorConfig {
         require_tower: matches.is_present("require_tower"),
         tower_storage,
@@ -2228,7 +2328,9 @@ pub fn main() {
     info!("Validator exiting..");
 }
 
+/// 解析账户索引相关参数
 fn process_account_indexes(matches: &ArgMatches) -> AccountSecondaryIndexes {
+    /// 要启用的账户索引种类
     let account_indexes: HashSet<AccountIndex> = matches
         .values_of("account_indexes")
         .unwrap_or_default()
@@ -2240,6 +2342,7 @@ fn process_account_indexes(matches: &ArgMatches) -> AccountSecondaryIndexes {
         })
         .collect();
 
+    /// 只包含
     let account_indexes_include_keys: HashSet<Pubkey> =
         values_t!(matches, "account_index_include_key", Pubkey)
             .unwrap_or_default()
@@ -2247,6 +2350,7 @@ fn process_account_indexes(matches: &ArgMatches) -> AccountSecondaryIndexes {
             .cloned()
             .collect();
 
+    /// 排除
     let account_indexes_exclude_keys: HashSet<Pubkey> =
         values_t!(matches, "account_index_exclude_key", Pubkey)
             .unwrap_or_default()
@@ -2257,6 +2361,7 @@ fn process_account_indexes(matches: &ArgMatches) -> AccountSecondaryIndexes {
     let exclude_keys = !account_indexes_exclude_keys.is_empty();
     let include_keys = !account_indexes_include_keys.is_empty();
 
+    /// 整合包含和排除
     let keys = if !account_indexes.is_empty() && (exclude_keys || include_keys) {
         let account_indexes_keys = AccountSecondaryIndexesIncludeExclude {
             exclude: exclude_keys,

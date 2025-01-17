@@ -113,8 +113,11 @@ impl SavedTower {
     }
 }
 
+/// 塔式共识存储，有存和取两种方法
 pub trait TowerStorage: Sync + Send {
+    /// 取，通过节点的公钥取一个塔
     fn load(&self, node_pubkey: &Pubkey) -> Result<Tower>;
+    /// 存，写入一个版本化的塔
     fn store(&self, saved_tower: &SavedTowerVersions) -> Result<()>;
 }
 

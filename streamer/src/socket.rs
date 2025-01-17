@@ -1,12 +1,16 @@
 use std::net::{IpAddr, SocketAddr};
 
+/// socket的监听范围，公网或公网内网都行
 #[derive(Clone, Copy)]
 pub enum SocketAddrSpace {
+    // 公网内网都行
     Unspecified,
+    // 公网
     Global,
 }
 
 impl SocketAddrSpace {
+    /// 根据是否允许监听内网，来创建，后面可以用来检查 ip 地址是不是内网
     pub fn new(allow_private_addr: bool) -> Self {
         if allow_private_addr {
             SocketAddrSpace::Unspecified
@@ -16,6 +20,7 @@ impl SocketAddrSpace {
     }
 
     /// Returns true if the IP address is valid.
+    /// 检查是不是
     #[inline]
     #[must_use]
     pub fn check(&self, addr: &SocketAddr) -> bool {

@@ -89,6 +89,7 @@ fn init(name: &OsStr) {
     info!("Loading {:?}", name);
     unsafe {
         INIT_HOOK.call_once(|| {
+            // 加载动态链接库，使用 dlopen2
             API = Some(Container::load(name).unwrap_or_else(|err| {
                 error!("Unable to load {:?}: {}", name, err);
                 std::process::exit(1);
@@ -97,6 +98,7 @@ fn init(name: &OsStr) {
     }
 }
 
+/// 找加速库的库文件路径，在同级的 perf-libs 文件夹里找
 pub fn locate_perf_libs() -> Option<PathBuf> {
     let exe = env::current_exe().expect("Unable to get executable path");
     let perf_libs = exe.parent().unwrap().join("perf-libs");
@@ -108,7 +110,9 @@ pub fn locate_perf_libs() -> Option<PathBuf> {
     None
 }
 
+/// 找 cuda 路径
 fn find_cuda_home(perf_libs_path: &Path) -> Option<PathBuf> {
+    // 已经装过 cuda，并且添加过环境变量
     if let Ok(cuda_home) = env::var("CUDA_HOME") {
         let path = PathBuf::from(cuda_home);
         if path.is_dir() {
@@ -119,6 +123,7 @@ fn find_cuda_home(perf_libs_path: &Path) -> Option<PathBuf> {
     }
 
     // Search /usr/local for a `cuda-` directory that matches a perf-libs subdirectory
+    // 在 /usr/local里找和加速文件夹里面名字匹配上的cuda
     for entry in fs::read_dir(perf_libs_path).unwrap().flatten() {
         let path = entry.path();
         if !path.is_dir() {
@@ -149,6 +154,7 @@ pub fn append_to_ld_library_path(mut ld_library_path: String) {
     env::set_var("LD_LIBRARY_PATH", ld_library_path);
 }
 
+/// 初始化 cuda
 pub fn init_cuda() {
     if let Some(perf_libs_path) = locate_perf_libs() {
         if let Some(cuda_home) = find_cuda_home(&perf_libs_path) {
@@ -164,13 +170,16 @@ pub fn init_cuda() {
             let libcuda_crypt = perf_libs_path
                 .join(cuda_home.file_name().unwrap())
                 .join("libcuda-crypt.so");
+            // 初始化 cuda
             return init(libcuda_crypt.as_os_str());
         } else {
+            // 没装cuda
             warn!("CUDA installation not found");
         }
     }
 
     // Last resort!  Blindly load the shared object and hope it all works out
+    // 最后一招!盲目地加载共享对象，并希望一切顺利。前面如果成功了早就返回了
     init(OsStr::new("libcuda-crypt.so"))
 }
 

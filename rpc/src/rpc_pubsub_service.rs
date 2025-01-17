@@ -37,14 +37,22 @@ pub const DEFAULT_TEST_QUEUE_CAPACITY_ITEMS: usize = 100;
 pub const DEFAULT_QUEUE_CAPACITY_BYTES: usize = 256 * 1024 * 1024;
 pub const DEFAULT_WORKER_THREADS: usize = 1;
 
+/// 订阅类 rpc 配置
 #[derive(Debug, Clone)]
 pub struct PubSubConfig {
+    /// 启用块订阅
     pub enable_block_subscription: bool,
+    /// 启用投票订阅
     pub enable_vote_subscription: bool,
+    /// 最大活跃中订阅
     pub max_active_subscriptions: usize,
+    /// 通知队列容量，项数
     pub queue_capacity_items: usize,
+    /// 通知队列容量，字节
     pub queue_capacity_bytes: usize,
+    /// 工作线程数
     pub worker_threads: usize,
+    /// 通知线程数
     pub notification_threads: Option<NonZeroUsize>,
 }
 

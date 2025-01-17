@@ -6,6 +6,7 @@ use {
 };
 
 lazy_static! {
+    /// 全局日志器
     static ref LOGGER: Arc<RwLock<env_logger::Logger>> =
         Arc::new(RwLock::new(env_logger::Logger::from_default_env()));
 }
@@ -26,6 +27,7 @@ impl log::Log for LoggerShim {
     fn flush(&self) {}
 }
 
+/// 替换掉全局日志器
 fn replace_logger(logger: env_logger::Logger) {
     log::set_max_level(logger.filter());
     *LOGGER.write().unwrap() = logger;
@@ -44,6 +46,7 @@ pub fn setup_with(filter: &str) {
 }
 
 // Configures logging with a default filter if RUST_LOG is not set
+/// 初始化日志器
 pub fn setup_with_default(filter: &str) {
     let logger = env_logger::Builder::from_env(env_logger::Env::new().default_filter_or(filter))
         .format_timestamp_nanos()
@@ -52,6 +55,7 @@ pub fn setup_with_default(filter: &str) {
 }
 
 // Configures logging with the `DEFAULT_FILTER` if RUST_LOG is not set
+/// 用默认过滤器初始化日志器
 pub fn setup_with_default_filter() {
     setup_with_default(DEFAULT_FILTER);
 }

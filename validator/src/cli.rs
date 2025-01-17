@@ -74,6 +74,8 @@ pub fn app<'a>(version: &'a str, default_args: &'a DefaultArgs) -> App<'a, 'a> {
     /// ctate 名
     return App::new(crate_name!())
         /// crate 描述
+        .about(crate_description!())
+        /// crate 版本
         .version(version)
         /// 启用颜色
         .global_setting(AppSettings::ColoredHelp)
@@ -1215,7 +1217,7 @@ pub fn app<'a>(version: &'a str, default_args: &'a DefaultArgs) -> App<'a, 'a> {
                      will be accepted",
                 ),
         )
-        /// 处理这个key的食物时打印到日志里
+        /// 处理这个key的事务时打印到日志里
         .arg(
             Arg::with_name("debug_key")
                 .long("debug-key")
@@ -1920,7 +1922,7 @@ pub fn app<'a>(version: &'a str, default_args: &'a DefaultArgs) -> App<'a, 'a> {
                 .hidden(hidden_unless_forced())
                 .help("Process the local ledger fully before starting networking services"),
         )
-        // 启用一个账户索引，由指定字段索引
+        // 启用某种账户索引，"program-id", "spl-token-owner", "spl-token-mint"，可以都开启
         // 帐户索引的主要作用是通过存储帐户公钥（Public Key）与其对应的帐户数据之间的映射关系，
         // 提供对帐户状态的快速查询和访问。每个帐户在 Solana 网络中都有一个唯一的公钥，
         // 该公钥会在帐户索引中映射到该帐户的状态信息（如余额、存储的资产等）。
@@ -2070,7 +2072,8 @@ pub fn app<'a>(version: &'a str, default_args: &'a DefaultArgs) -> App<'a, 'a> {
                 )
                 .hidden(hidden_unless_forced()),
         )
-        // 这个参数用于设置 Solana 节点中“古老存储”（Ancient Storage）的理想大小。古老存储是指那些经过很长时间没有访问的帐户数据。Solana 为了提高性能和优化存储，会将这些不常访问的帐户数据分离到“古老存储”中，以便在未来需要时能够快速检索，但不会影响当前的活跃帐户查询性能。
+        // 这个参数用于设置 Solana 节点中“古老存储”（Ancient Storage）的理想大小。古老存储是指那些经过很长时间没有访问的帐户数据。Solana 为了提高性能和优化存储，
+        // 会将这些不常访问的帐户数据分离到“古老存储”中，以便在未来需要时能够快速检索，但不会影响当前的活跃帐户查询性能。
         // 目的：该参数指定古老存储理想的大小，以便节点能够按需管理存储区域。通常，古老存储会包含过时或不常更新的数据，确保活跃数据能够保持较快的访问速度。
         // 配置：这个大小可以通过此参数进行配置，确保 Solana 节点的存储不会因为过多的历史数据而变得低效。
         // 默认值：Solana 使用合理的默认值来平衡存储和性能，但这个值可以根据节点的资源、存储需求和性能要求进行调整。
@@ -2406,7 +2409,7 @@ pub fn app<'a>(version: &'a str, default_args: &'a DefaultArgs) -> App<'a, 'a> {
         /// 附加提示
         .after_help("The default subcommand is run")
         .subcommand(
-            /// 退出命令
+            /// 退出命令，会找合适的时机优雅退出
             SubCommand::with_name("exit")
                 .about("Send an exit request to the validator")
                 /// 强制退出
@@ -2428,6 +2431,7 @@ pub fn app<'a>(version: &'a str, default_args: &'a DefaultArgs) -> App<'a, 'a> {
                         .takes_value(false)
                         .help("Monitor the validator after sending the exit request"),
                 )
+                /// 在轮到自己成为 leader 前的时间，马上就要当leader了就不关
                 .arg(
                     Arg::with_name("min_idle_time")
                         .long("min-idle-time")
@@ -2440,6 +2444,7 @@ pub fn app<'a>(version: &'a str, default_args: &'a DefaultArgs) -> App<'a, 'a> {
                              restarting",
                         ),
                 )
+                /// 最大过失质押，损失太大就不关
                 .arg(
                     Arg::with_name("max_delinquent_stake")
                         .long("max-delinquent-stake")
@@ -2449,11 +2454,13 @@ pub fn app<'a>(version: &'a str, default_args: &'a DefaultArgs) -> App<'a, 'a> {
                         .value_name("PERCENT")
                         .help("The maximum delinquent stake % permitted for an exit"),
                 )
+                /// 跳过快照检查
                 .arg(
                     Arg::with_name("skip_new_snapshot_check")
                         .long("skip-new-snapshot-check")
                         .help("Skip check for a new snapshot"),
                 )
+                /// 跳过健康检查
                 .arg(
                     Arg::with_name("skip_health_check")
                         .long("skip-health-check")
@@ -2461,11 +2468,15 @@ pub fn app<'a>(version: &'a str, default_args: &'a DefaultArgs) -> App<'a, 'a> {
                 ),
         )
         .subcommand(
+            /// 调整验证器的授权投票人
             SubCommand::with_name("authorized-voter")
                 .about("Adjust the validator authorized voters")
+                /// 没有用下一级子命令时，显示帮助文本
                 .setting(AppSettings::SubcommandRequiredElseHelp)
+                /// 子命令前缀匹配
                 .setting(AppSettings::InferSubcommands)
                 .subcommand(
+                    /// 增加授权投票人
                     SubCommand::with_name("add")
                         .about("Add an authorized voter")
                         .arg(
@@ -2486,6 +2497,7 @@ pub fn app<'a>(version: &'a str, default_args: &'a DefaultArgs) -> App<'a, 'a> {
                         ),
                 )
                 .subcommand(
+                    /// 移除所有授权投票人
                     SubCommand::with_name("remove-all")
                         .about("Remove all authorized voters")
                         .after_help(
@@ -2495,9 +2507,11 @@ pub fn app<'a>(version: &'a str, default_args: &'a DefaultArgs) -> App<'a, 'a> {
                 ),
         )
         .subcommand(
+            /// 显示验证器联系信息
             SubCommand::with_name("contact-info")
                 .about("Display the validator's contact info")
                 .arg(
+                    /// 输出格式
                     Arg::with_name("output")
                         .long("output")
                         .takes_value(true)
@@ -2507,9 +2521,11 @@ pub fn app<'a>(version: &'a str, default_args: &'a DefaultArgs) -> App<'a, 'a> {
                 ),
         )
         .subcommand(
+            /// 从指定节点拉取信息，修复碎屑或时隙
             SubCommand::with_name("repair-shred-from-peer")
                 .about("Request a repair from the specified validator")
                 .arg(
+                    /// 指定节点
                     Arg::with_name("pubkey")
                         .long("pubkey")
                         .value_name("PUBKEY")
@@ -2519,6 +2535,7 @@ pub fn app<'a>(version: &'a str, default_args: &'a DefaultArgs) -> App<'a, 'a> {
                         .help("Identity pubkey of the validator to repair from"),
                 )
                 .arg(
+                    /// 时隙
                     Arg::with_name("slot")
                         .long("slot")
                         .value_name("SLOT")
@@ -2527,6 +2544,7 @@ pub fn app<'a>(version: &'a str, default_args: &'a DefaultArgs) -> App<'a, 'a> {
                         .help("Slot to repair"),
                 )
                 .arg(
+                    /// 碎屑
                     Arg::with_name("shred")
                         .long("shred")
                         .value_name("SHRED")
@@ -2536,11 +2554,13 @@ pub fn app<'a>(version: &'a str, default_args: &'a DefaultArgs) -> App<'a, 'a> {
                 ),
         )
         .subcommand(
+            /// 调整白名单
             SubCommand::with_name("repair-whitelist")
                 .about("Manage the validator's repair protocol whitelist")
                 .setting(AppSettings::SubcommandRequiredElseHelp)
                 .setting(AppSettings::InferSubcommands)
                 .subcommand(
+                    /// 获取白名单
                     SubCommand::with_name("get")
                         .about("Display the validator's repair protocol whitelist")
                         .arg(
@@ -2553,6 +2573,7 @@ pub fn app<'a>(version: &'a str, default_args: &'a DefaultArgs) -> App<'a, 'a> {
                         ),
                 )
                 .subcommand(
+                    /// 设置白名单
                     SubCommand::with_name("set")
                         .about("Set the validator's repair protocol whitelist")
                         .setting(AppSettings::ArgRequiredElseHelp)
@@ -2571,6 +2592,7 @@ pub fn app<'a>(version: &'a str, default_args: &'a DefaultArgs) -> App<'a, 'a> {
                         ),
                 )
                 .subcommand(
+                    /// 移除所有白名单
                     SubCommand::with_name("remove-all")
                         .about("Clear the validator's repair protocol whitelist")
                         .after_help(
@@ -2580,19 +2602,25 @@ pub fn app<'a>(version: &'a str, default_args: &'a DefaultArgs) -> App<'a, 'a> {
                 ),
         )
         .subcommand(
+            /// 初始化节点
             SubCommand::with_name("init").about("Initialize the ledger directory then exit"),
         )
+        /// 监控节点
         .subcommand(SubCommand::with_name("monitor").about("Monitor the validator"))
+        /// 运行节点
         .subcommand(SubCommand::with_name("run").about("Run the validator"))
         .subcommand(
+            /// 管理 geyser 插件
             SubCommand::with_name("plugin")
                 .about("Manage and view geyser plugins")
                 .setting(AppSettings::SubcommandRequiredElseHelp)
                 .setting(AppSettings::InferSubcommands)
                 .subcommand(
+                    /// 列出插件
                     SubCommand::with_name("list").about("List all current running gesyer plugins"),
                 )
                 .subcommand(
+                    /// 上传插件
                     SubCommand::with_name("unload")
                         .about(
                             "Unload a particular gesyer plugin. You must specify the gesyer \
@@ -2601,6 +2629,7 @@ pub fn app<'a>(version: &'a str, default_args: &'a DefaultArgs) -> App<'a, 'a> {
                         .arg(Arg::with_name("name").required(true).takes_value(true)),
                 )
                 .subcommand(
+                    /// 重新加载插件
                     SubCommand::with_name("reload")
                         .about(
                             "Reload a particular gesyer plugin. You must specify the gesyer \
@@ -2610,6 +2639,7 @@ pub fn app<'a>(version: &'a str, default_args: &'a DefaultArgs) -> App<'a, 'a> {
                         .arg(Arg::with_name("config").required(true).takes_value(true)),
                 )
                 .subcommand(
+                    /// 加载插件
                     SubCommand::with_name("load")
                         .about(
                             "Load a new gesyer plugin. You must specify the config path. Fails if \
@@ -2619,9 +2649,11 @@ pub fn app<'a>(version: &'a str, default_args: &'a DefaultArgs) -> App<'a, 'a> {
                 ),
         )
         .subcommand(
+            /// 设置节点公钥
             SubCommand::with_name("set-identity")
                 .about("Set the validator identity")
                 .arg(
+                    /// 密钥对
                     Arg::with_name("identity")
                         .index(1)
                         .value_name("KEYPAIR")
@@ -2634,6 +2666,7 @@ pub fn app<'a>(version: &'a str, default_args: &'a DefaultArgs) -> App<'a, 'a> {
                         ),
                 )
                 .arg(
+                    /// 需要塔式共识状态
                     clap::Arg::with_name("require_tower")
                         .long("require-tower")
                         .takes_value(false)
@@ -2642,15 +2675,18 @@ pub fn app<'a>(version: &'a str, default_args: &'a DefaultArgs) -> App<'a, 'a> {
                              found",
                         ),
                 )
+                /// 新公钥设置只会影响当前运行中的验证器
                 .after_help(
                     "Note: the new identity only applies to the currently running validator \
                      instance",
                 ),
         )
         .subcommand(
+            /// 设置日志过滤器， RUST_LOG 格式
             SubCommand::with_name("set-log-filter")
                 .about("Adjust the validator log filter")
                 .arg(
+                    /// 过滤器
                     Arg::with_name("filter").takes_value(true).index(1).help(
                         "New filter using the same format as the RUST_LOG environment variable",
                     ),
@@ -2660,6 +2696,8 @@ pub fn app<'a>(version: &'a str, default_args: &'a DefaultArgs) -> App<'a, 'a> {
                 ),
         )
         .subcommand(
+            /// 允许你为某些节点设置自定义的 验证器权益。它通常用于调试、测试、或者在集群的某些验证器节点需要特殊配置时进行调整。
+            /// 例如，在集群启动或进行某些重要操作时，可能需要指定某些验证器的特殊权益配置，或者在调试期间临时更改某些验证器的状态。
             SubCommand::with_name("staked-nodes-overrides")
                 .about("Overrides stakes of specific node identities.")
                 .arg(
@@ -2678,9 +2716,11 @@ pub fn app<'a>(version: &'a str, default_args: &'a DefaultArgs) -> App<'a, 'a> {
                 ),
         )
         .subcommand(
+            /// 等待重启窗口
             SubCommand::with_name("wait-for-restart-window")
                 .about("Monitor the validator for a good time to restart")
                 .arg(
+                    /// 距离下次任期最少要间隔多久
                     Arg::with_name("min_idle_time")
                         .long("min-idle-time")
                         .takes_value(true)
@@ -2693,6 +2733,7 @@ pub fn app<'a>(version: &'a str, default_args: &'a DefaultArgs) -> App<'a, 'a> {
                         ),
                 )
                 .arg(
+                    /// 节点公钥
                     Arg::with_name("identity")
                         .long("identity")
                         .value_name("ADDRESS")
@@ -2701,6 +2742,7 @@ pub fn app<'a>(version: &'a str, default_args: &'a DefaultArgs) -> App<'a, 'a> {
                         .help("Validator identity to monitor [default: your validator]"),
                 )
                 .arg(
+                    /// 最大过失质押
                     Arg::with_name("max_delinquent_stake")
                         .long("max-delinquent-stake")
                         .takes_value(true)
@@ -2710,24 +2752,29 @@ pub fn app<'a>(version: &'a str, default_args: &'a DefaultArgs) -> App<'a, 'a> {
                         .help("The maximum delinquent stake % permitted for a restart"),
                 )
                 .arg(
+                    /// 跳过快照检查
                     Arg::with_name("skip_new_snapshot_check")
                         .long("skip-new-snapshot-check")
                         .help("Skip check for a new snapshot"),
                 )
                 .arg(
+                    /// 跳过健康检查
                     Arg::with_name("skip_health_check")
                         .long("skip-health-check")
                         .help("Skip health check"),
                 )
+                /// 如果非 0 退出码，说明不适合重启
                 .after_help(
                     "Note: If this command exits with a non-zero status then this not a good time \
                      for a restart",
                 ),
         )
         .subcommand(
+            /// 设置公共地址
             SubCommand::with_name("set-public-address")
                 .about("Specify addresses to advertise in gossip")
                 .arg(
+                    /// tpu地址
                     Arg::with_name("tpu_addr")
                         .long("tpu")
                         .value_name("HOST:PORT")
@@ -2736,6 +2783,7 @@ pub fn app<'a>(version: &'a str, default_args: &'a DefaultArgs) -> App<'a, 'a> {
                         .help("TPU address to advertise in gossip"),
                 )
                 .arg(
+                    /// tpu 转发地址
                     Arg::with_name("tpu_forwards_addr")
                         .long("tpu-forwards")
                         .value_name("HOST:PORT")
@@ -2744,6 +2792,7 @@ pub fn app<'a>(version: &'a str, default_args: &'a DefaultArgs) -> App<'a, 'a> {
                         .help("TPU Forwards address to advertise in gossip"),
                 )
                 .group(
+                    /// 分组，上面两个必须二选一或都选
                     ArgGroup::with_name("set_public_address_details")
                         .args(&["tpu_addr", "tpu_forwards_addr"])
                         .required(true)
@@ -2755,6 +2804,7 @@ pub fn app<'a>(version: &'a str, default_args: &'a DefaultArgs) -> App<'a, 'a> {
 
 /// Deprecated argument description should be moved into the [`deprecated_arguments()`] function,
 /// expressed as an instance of this type.
+/// 已弃用的参数，不看了
 struct DeprecatedArg {
     /// Deprecated argument description, moved here as is.
     ///
@@ -2773,6 +2823,7 @@ struct DeprecatedArg {
     usage_warning: Option<&'static str>,
 }
 
+/// 已弃用的参数，不看了
 fn deprecated_arguments() -> Vec<DeprecatedArg> {
     let mut res = vec![];
 
@@ -2969,6 +3020,7 @@ fn deprecated_arguments() -> Vec<DeprecatedArg> {
 
 // Helper to add arguments that are no longer used but are being kept around to avoid breaking
 // validator startup commands.
+/// 获取弃用的参数
 fn get_deprecated_arguments() -> Vec<Arg<'static, 'static>> {
     deprecated_arguments()
         .into_iter()
@@ -2980,6 +3032,7 @@ fn get_deprecated_arguments() -> Vec<Arg<'static, 'static>> {
         .collect()
 }
 
+/// 警告参数弃用
 pub fn warn_for_deprecated_arguments(matches: &ArgMatches) {
     for DeprecatedArg {
         arg,
@@ -3082,13 +3135,9 @@ impl DefaultArgs {
         let default_send_transaction_service_config = send_transaction_service::Config::default();
 
         DefaultArgs {
-            /// 监听地址，默认全监听
             bind_address: "0.0.0.0".to_string(),
-            /// 账本路径，默认验证器旁边的ledger
             ledger_path: "ledger".to_string(),
-            /// 动态端口范围，默认8000到10000
             dynamic_port_range: format!("{}-{}", VALIDATOR_PORT_RANGE.0, VALIDATOR_PORT_RANGE.1),
-            /// 最大本地快照年龄，如果超龄的就只能从别的节点拉取了，默认 2500 时隙
             maximum_local_snapshot_age: "2500".to_string(),
             genesis_archive_unpacked_size: MAX_GENESIS_ARCHIVE_UNPACKED_SIZE.to_string(),
             rpc_max_multiple_accounts: MAX_MULTIPLE_ACCOUNTS.to_string(),
@@ -3172,17 +3221,20 @@ impl DefaultArgs {
 }
 
 impl Default for DefaultArgs {
+    /// 默认参数，见模块其他注释
     fn default() -> Self {
         Self::new()
     }
 }
 
+/// 检查端口是不是u16
 pub fn port_validator(port: String) -> Result<(), String> {
     port.parse::<u16>()
         .map(|_| ())
         .map_err(|e| format!("{e:?}"))
 }
 
+/// 检查端口范围
 pub fn port_range_validator(port_range: String) -> Result<(), String> {
     if let Some((start, end)) = solana_net_utils::parse_port_range(&port_range) {
         if end - start < MINIMUM_VALIDATOR_PORT_RANGE_WIDTH {
@@ -3201,6 +3253,7 @@ pub fn port_range_validator(port_range: String) -> Result<(), String> {
     }
 }
 
+/// 检查是否是哈希
 fn hash_validator(hash: String) -> Result<(), String> {
     Hash::from_str(&hash)
         .map(|_| ())
@@ -3208,7 +3261,7 @@ fn hash_validator(hash: String) -> Result<(), String> {
 }
 
 /// Test validator
-
+/// 测试版验证器，暂不考虑
 pub fn test_app<'a>(version: &'a str, default_args: &'a DefaultTestArgs) -> App<'a, 'a> {
     return App::new("solana-test-validator")
         .about("Test Validator")
@@ -3664,6 +3717,7 @@ pub fn test_app<'a>(version: &'a str, default_args: &'a DefaultTestArgs) -> App<
         );
 }
 
+/// 测试验证器默认参数，不考虑
 pub struct DefaultTestArgs {
     pub rpc_port: String,
     pub faucet_port: String,
