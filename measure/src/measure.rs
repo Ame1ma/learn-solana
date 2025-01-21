@@ -3,14 +3,19 @@ use std::{
     time::{Duration, Instant},
 };
 
+/// 耗时统计
 #[derive(Debug)]
 pub struct Measure {
+    /// 名称
     name: &'static str,
+    /// 开始时间
     start: Instant,
+    /// 持续时间
     duration: u64,
 }
 
 impl Measure {
+    /// 开始计时
     pub fn start(name: &'static str) -> Self {
         Self {
             name,
@@ -19,46 +24,57 @@ impl Measure {
         }
     }
 
+    /// 停止计时
     pub fn stop(&mut self) {
         self.duration = self.start.elapsed().as_nanos() as u64;
     }
 
+    /// 纳秒
     pub fn as_ns(&self) -> u64 {
         self.duration
     }
 
+    /// 微秒
     pub fn as_us(&self) -> u64 {
         self.duration / 1000
     }
 
+    /// 毫秒
     pub fn as_ms(&self) -> u64 {
         self.duration / (1000 * 1000)
     }
 
+    /// 秒
     pub fn as_s(&self) -> f32 {
         self.duration as f32 / (1000.0f32 * 1000.0f32 * 1000.0f32)
     }
 
+    /// 间隔
     pub fn as_duration(&self) -> Duration {
         Duration::from_nanos(self.as_ns())
     }
 
+    /// 取一次流经时间
     pub fn end_as_ns(self) -> u64 {
         self.start.elapsed().as_nanos() as u64
     }
 
+    /// 取一次流经时间
     pub fn end_as_us(self) -> u64 {
         self.start.elapsed().as_micros() as u64
     }
 
+    /// 取一次流经时间
     pub fn end_as_ms(self) -> u64 {
         self.start.elapsed().as_millis() as u64
     }
 
+    /// 取一次流经时间
     pub fn end_as_s(self) -> f32 {
         self.start.elapsed().as_secs_f32()
     }
 
+    /// 取一次流经时间
     pub fn end_as_duration(self) -> Duration {
         self.start.elapsed()
     }

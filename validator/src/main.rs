@@ -548,7 +548,7 @@ fn get_cluster_shred_version(entrypoints: &[SocketAddr]) -> Option<u16> {
     None
 }
 
-/// 解析banking trace的目录大小限制传参
+/// 解析并配置banking trace的目录大小限制传参
 fn configure_banking_trace_dir_byte_limit(
     validator_config: &mut ValidatorConfig,
     matches: &ArgMatches,
@@ -1670,6 +1670,7 @@ pub fn main() {
     let full_api = matches.is_present("full_rpc_api");
 
     /// 验证器配置，到这里还只是部分配置
+    /// 详见结构体注释
     let mut validator_config = ValidatorConfig {
         require_tower: matches.is_present("require_tower"),
         tower_storage,
@@ -1821,6 +1822,7 @@ pub fn main() {
         ..ValidatorConfig::default()
     };
 
+    /// 投票账户
     let vote_account = pubkey_of(&matches, "vote_account").unwrap_or_else(|| {
         if !validator_config.voting_disabled {
             warn!("--vote-account not specified, validator will not vote");
@@ -1829,10 +1831,12 @@ pub fn main() {
         Keypair::new().pubkey()
     });
 
+    /// 动态端口范围
     let dynamic_port_range =
         solana_net_utils::parse_port_range(matches.value_of("dynamic_port_range").unwrap())
             .expect("invalid dynamic_port_range");
 
+    /// 账户路径
     let account_paths: Vec<PathBuf> =
         if let Ok(account_paths) = values_t!(matches, "account_paths", String) {
             account_paths
@@ -1848,6 +1852,7 @@ pub fn main() {
         exit(1);
     });
 
+    /// 创建账户的运行和快照路径
     let (account_run_paths, account_snapshot_paths) =
         create_all_accounts_run_and_snapshot_dirs(&account_paths).unwrap_or_else(|err| {
             eprintln!("Error: {err}");
@@ -1855,9 +1860,11 @@ pub fn main() {
         });
 
     // From now on, use run/ paths in the same way as the previous account_paths.
+    /// 设置账户路径
     validator_config.account_paths = account_run_paths;
 
     // These snapshot paths are only used for initial clean up, add in shrink paths if they exist.
+    /// 设置账户快照路径
     validator_config.account_snapshot_paths =
         if let Some(account_shrink_snapshot_paths) = account_shrink_snapshot_paths {
             account_snapshot_paths
@@ -1868,21 +1875,28 @@ pub fn main() {
             account_snapshot_paths
         };
 
+    /// 最长本地快照年龄
     let maximum_local_snapshot_age = value_t_or_exit!(matches, "maximum_local_snapshot_age", u64);
+    /// 最大全快照保留
     let maximum_full_snapshot_archives_to_retain =
         value_t_or_exit!(matches, "maximum_full_snapshots_to_retain", NonZeroUsize);
+    /// 最大增量快照保留
     let maximum_incremental_snapshot_archives_to_retain = value_t_or_exit!(
         matches,
         "maximum_incremental_snapshots_to_retain",
         NonZeroUsize
     );
+    /// 快照拍摄线程优先级
     let snapshot_packager_niceness_adj =
         value_t_or_exit!(matches, "snapshot_packager_niceness_adj", i8);
+    /// 最小快照下载速度
     let minimal_snapshot_download_speed =
         value_t_or_exit!(matches, "minimal_snapshot_download_speed", f32);
+    /// 最大快照下载中断
     let maximum_snapshot_download_abort =
         value_t_or_exit!(matches, "maximum_snapshot_download_abort", u64);
 
+    /// 创建快照路径
     let snapshots_dir = if let Some(snapshots) = matches.value_of("snapshots") {
         Path::new(snapshots)
     } else {
@@ -1896,6 +1910,7 @@ pub fn main() {
         exit(1);
     });
 
+    /// 账户和快照路径不能是同一个
     if account_paths
         .iter()
         .any(|account_path| account_path == &snapshots_dir)
@@ -1907,6 +1922,7 @@ pub fn main() {
         exit(1);
     }
 
+    /// 创建银行快照路径
     let bank_snapshots_dir = snapshots_dir.join("snapshots");
     fs::create_dir_all(&bank_snapshots_dir).unwrap_or_else(|err| {
         eprintln!(
@@ -1916,6 +1932,7 @@ pub fn main() {
         exit(1);
     });
 
+    /// 创建全快照归档路径
     let full_snapshot_archives_dir =
         if let Some(full_snapshot_archive_path) = matches.value_of("full_snapshot_archive_path") {
             PathBuf::from(full_snapshot_archive_path)
@@ -1930,6 +1947,7 @@ pub fn main() {
         exit(1);
     });
 
+    /// 创建增量快照存档路径
     let incremental_snapshot_archives_dir = if let Some(incremental_snapshot_archive_path) =
         matches.value_of("incremental_snapshot_archive_path")
     {
@@ -1945,12 +1963,14 @@ pub fn main() {
         exit(1);
     });
 
+    /// 归档格式
     let archive_format = {
         let archive_format_str = value_t_or_exit!(matches, "snapshot_archive_format", String);
         ArchiveFormat::from_cli_arg(&archive_format_str)
             .unwrap_or_else(|| panic!("Archive format not recognized: {archive_format_str}"))
     };
 
+    /// 快照版本
     let snapshot_version =
         matches
             .value_of("snapshot_version")
@@ -1961,6 +1981,7 @@ pub fn main() {
                 })
             });
 
+    /// 快照归档间隔
     let (full_snapshot_archive_interval_slots, incremental_snapshot_archive_interval_slots) = match (
         !matches.is_present("no_incremental_snapshots"),
         value_t_or_exit!(matches, "snapshot_interval_slots", u64),
@@ -1998,6 +2019,7 @@ pub fn main() {
         }
     };
 
+    /// 设置快照配置，详见结构体注释
     validator_config.snapshot_config = SnapshotConfig {
         usage: if full_snapshot_archive_interval_slots == DISABLED_SNAPSHOT_ARCHIVE_INTERVAL {
             SnapshotUsage::LoadOnly
@@ -2018,11 +2040,13 @@ pub fn main() {
     };
 
     // The accounts hash interval shall match the snapshot interval
+    /// 账户哈希时间间隔
     validator_config.accounts_hash_interval_slots = std::cmp::min(
         full_snapshot_archive_interval_slots,
         incremental_snapshot_archive_interval_slots,
     );
 
+    /// 打印归档时间间隔
     info!(
         "Snapshot configuration: full snapshot interval: {} slots, incremental snapshot interval: {} slots",
         if full_snapshot_archive_interval_slots == DISABLED_SNAPSHOT_ARCHIVE_INTERVAL {
@@ -2037,6 +2061,8 @@ pub fn main() {
         },
     );
 
+    /// 验证快照配置有效性
+    /// 全快照拍摄时间是增量快照拍摄时间的整数倍，增量快照的拍摄时间是账户哈希的整数倍
     if !is_snapshot_config_valid(
         &validator_config.snapshot_config,
         validator_config.accounts_hash_interval_slots,
@@ -2051,23 +2077,29 @@ pub fn main() {
         exit(1);
     }
 
+    /// 解析并配置banking trace的目录大小限制传参
     configure_banking_trace_dir_byte_limit(&mut validator_config, &matches);
+    /// 块验证方法
     validator_config.block_verification_method = value_t!(
         matches,
         "block_verification_method",
         BlockVerificationMethod
     )
     .unwrap_or_default();
+    /// 块生产方法
     validator_config.block_production_method = value_t!(
         matches, // comment to align formatting...
         "block_production_method",
         BlockProductionMethod
     )
     .unwrap_or_default();
+    /// 配置块生产转发，当使用覆盖节点质押量时
     validator_config.enable_block_production_forwarding = staked_nodes_overrides_path.is_some();
+    /// 调度器线程数
     validator_config.unified_scheduler_handler_threads =
         value_t!(matches, "unified_scheduler_handler_threads", usize).ok();
 
+    /// 公共rpc地址
     let public_rpc_addr = matches.value_of("public_rpc_addr").map(|addr| {
         solana_net_utils::parse_host_port(addr).unwrap_or_else(|e| {
             eprintln!("failed to parse public rpc address: {e}");
@@ -2075,6 +2107,14 @@ pub fn main() {
         })
     });
 
+    /// 检查网络配置
+    /// const INTERESTING_LIMITS: &[(&str, InterestingLimit)] = &[
+    ///     ("net.core.rmem_max", InterestingLimit::Recommend(134217728)),
+    ///     ("net.core.wmem_max", InterestingLimit::Recommend(134217728)),
+    ///     ("vm.max_map_count", InterestingLimit::Recommend(1000000)),
+    ///     ("net.core.optmem_max", InterestingLimit::QueryOnly),
+    ///     ("net.core.netdev_max_backlog", InterestingLimit::QueryOnly),
+    /// ];
     if !matches.is_present("no_os_network_limits_test") {
         if SystemMonitorService::check_os_network_limits() {
             info!("OS network limits test passed.");
@@ -2084,11 +2124,14 @@ pub fn main() {
         }
     }
 
+    /// 锁住账本
     let mut ledger_lock = ledger_lockfile(&ledger_path);
     let _ledger_write_guard = lock_ledger(&ledger_path, &mut ledger_lock);
 
+    /// 新建启动进度
     let start_progress = Arc::new(RwLock::new(ValidatorStartProgress::default()));
     let admin_service_post_init = Arc::new(RwLock::new(None));
+    /// rpc 到插件管理器 channel
     let (rpc_to_plugin_manager_sender, rpc_to_plugin_manager_receiver) =
         if starting_with_geyser_plugins {
             let (sender, receiver) = unbounded();
@@ -2096,6 +2139,7 @@ pub fn main() {
         } else {
             (None, None)
         };
+    /// 启动本地 admin rpc 服务
     admin_rpc_service::run(
         &ledger_path,
         admin_rpc_service::AdminRpcRequestMetadata {

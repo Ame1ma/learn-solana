@@ -399,6 +399,29 @@ enum InterestingLimit {
     QueryOnly,
 }
 
+// 这段代码是定义了一些**网络配置**和**虚拟内存配置**的限制，通常是为了确保Solana网络节点（如验证者）在运行时能够更好地处理高吞吐量和高并发的情况。这些限制项通常是在验证者节点的操作系统级别进行设置，以优化性能和资源管理。具体来说，代码中的五项配置项的作用如下：
+// ### 1. **net.core.rmem_max**
+//    - **作用**：这个配置项控制了操作系统内核所允许的最大接收缓冲区大小。
+//    - **为什么重要**：在网络传输中，接收缓冲区用于存储接收到的数据。如果接收缓冲区过小，可能会导致网络包丢失，特别是在高负载的情况下。Solana网络的验证者需要处理大量的网络数据，因此需要设置更大的接收缓冲区。
+//    - **配置建议**：`InterestingLimit::Recommend(134217728)` 表示推荐将其设置为 134217728 字节（即 128 MB）。这是为了确保系统能够接收更多的数据而不会丢包。
+// ### 2. **net.core.wmem_max**
+//    - **作用**：这个配置项控制了操作系统内核所允许的最大发送缓冲区大小。
+//    - **为什么重要**：与接收缓冲区类似，发送缓冲区用于存储待发送的数据。如果发送缓冲区太小，可能会影响验证者向网络广播交易或块的效率。Solana要求节点能够高效地广播交易和数据，因此需要更大的发送缓冲区。
+//    - **配置建议**：`InterestingLimit::Recommend(134217728)` 也建议将此项设置为 134217728 字节（128 MB），以确保能够快速发送大量数据。
+// ### 3. **vm.max_map_count**
+//    - **作用**：这个配置项限制了一个进程可以创建的最大虚拟内存映射（`mmap`）数量。
+//    - **为什么重要**：Solana节点会处理大量的内存映射，尤其是在读取和写入 RocksDB（Solana使用的键值数据库）时。这项限制如果设置得太低，可能会导致内存映射失败，从而影响节点性能。
+//    - **配置建议**：`InterestingLimit::Recommend(1000000)` 表示推荐将其设置为 1000000。这个值较大，旨在确保验证者在处理大量数据时不会碰到内存映射的限制。
+// ### 4. **net.core.optmem_max**
+//    - **作用**：这个配置项控制了网络优化内存的最大值。优化内存用于存储与网络流量相关的缓存，帮助减少系统负载。
+//    - **为什么重要**：Solana网络的通信可能需要一些优化内存来提高性能，这个值对于网络的吞吐量和延迟有影响。
+//    - **配置建议**：`InterestingLimit::QueryOnly` 表示这个配置项只可查询，而不建议修改。这通常是因为它是由操作系统自动管理的，或者它的影响在Solana的上下文中并不大。
+// ### 5. **net.core.netdev_max_backlog**
+//    - **作用**：这个配置项控制了每个网络设备的最大待处理队列长度。
+//    - **为什么重要**：在高流量环境下，如果网络设备的队列过小，可能会导致数据包丢失，因为数据包可能会在到达处理前被丢弃。增加队列的长度可以防止这一问题，尤其是在网络流量很高时。
+//    - **配置建议**：`InterestingLimit::QueryOnly` 表示这个配置项只能查询，不能直接修改。它是操作系统或内核自适应管理的，通常不需要用户直接干预。
+// ### 总结：
+// 这些配置项主要与网络性能和内存管理有关，特别是对于高并发、高吞吐量的系统（如Solana节点）来说，它们确保了系统能够处理大量的网络数据、有效地管理内存，并避免因资源限制导致性能瓶颈。对于每个配置项，`InterestingLimit::Recommend` 表示推荐的最佳设置，而 `InterestingLimit::QueryOnly` 表示这些项只能查询而不能直接修改。
 #[cfg(target_os = "linux")]
 const INTERESTING_LIMITS: &[(&str, InterestingLimit)] = &[
     ("net.core.rmem_max", InterestingLimit::Recommend(134217728)),
@@ -480,12 +503,14 @@ impl SystemMonitorService {
             .all(|good| good)
     }
 
+    /// 测试网络配置，见同mod的[`INTERESTING_LIMITS`]
     #[cfg(not(target_os = "linux"))]
     pub fn check_os_network_limits() -> bool {
         datapoint_info!("os-config", ("platform", platform_id(), String));
         true
     }
 
+    /// 测试网络配置，见同mod的[`INTERESTING_LIMITS`]
     #[cfg(target_os = "linux")]
     pub fn check_os_network_limits() -> bool {
         datapoint_info!("os-config", ("platform", platform_id(), String));

@@ -146,6 +146,7 @@ fn compile_instructions(ixs: &[Instruction], keys: &[Pubkey]) -> Vec<CompiledIns
 /// redundantly specifying the fee-payer is not strictly required.
 // NOTE: Serialization-related changes must be paired with the custom serialization
 // for versioned messages in the `RemainingLegacyMessage` struct.
+/// 消息
 #[cfg(not(target_arch = "wasm32"))]
 #[cfg_attr(
     feature = "frozen-abi",
@@ -161,17 +162,21 @@ fn compile_instructions(ixs: &[Instruction], keys: &[Pubkey]) -> Vec<CompiledIns
 pub struct Message {
     /// The message header, identifying signed and read-only `account_keys`.
     // NOTE: Serialization-related changes must be paired with the direct read at sigverify.
+    /// 消息头
     pub header: MessageHeader,
 
     /// All the account keys used by this transaction.
+    /// 用到的账户
     #[cfg_attr(feature = "serde", serde(with = "solana_short_vec"))]
     pub account_keys: Vec<Pubkey>,
 
     /// The id of a recent ledger entry.
+    /// 最近块哈希
     pub recent_blockhash: Hash,
 
     /// Programs that will be executed in sequence and committed in one atomic transaction if all
     /// succeed.
+    /// 指令
     #[cfg_attr(feature = "serde", serde(with = "solana_short_vec"))]
     pub instructions: Vec<CompiledInstruction>,
 }

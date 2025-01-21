@@ -11,6 +11,7 @@ use {solana_pubkey::Pubkey, solana_sanitize::Sanitize};
 /// construction of `Message`. Most users will not interact with it directly.
 ///
 /// [`Message`]: crate::Message
+/// 编译后的指令
 #[cfg_attr(feature = "frozen-abi", derive(AbiExample))]
 #[cfg_attr(
     feature = "serde",
@@ -20,11 +21,14 @@ use {solana_pubkey::Pubkey, solana_sanitize::Sanitize};
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct CompiledInstruction {
     /// Index into the transaction keys array indicating the program account that executes this instruction.
+    /// 程序账户的索引
     pub program_id_index: u8,
     /// Ordered indices into the transaction keys array indicating which accounts to pass to the program.
+    /// 指令用到的账户的索引
     #[cfg_attr(feature = "serde", serde(with = "solana_short_vec"))]
     pub accounts: Vec<u8>,
     /// The program input data.
+    /// 指令
     #[cfg_attr(feature = "serde", serde(with = "solana_short_vec"))]
     pub data: Vec<u8>,
 }

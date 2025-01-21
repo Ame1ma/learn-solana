@@ -18,11 +18,15 @@ use {
 };
 
 /// CrdsValue that is replicated across the cluster
+/// 跨集群复制的 crds 值
 #[cfg_attr(feature = "frozen-abi", derive(AbiExample))]
 #[derive(Serialize, Clone, Debug, PartialEq, Eq)]
 pub struct CrdsValue {
+    /// 签名
     signature: Signature,
+    /// 数据
     data: CrdsData,
+    /// 签名与数据的哈希值
     #[serde(skip_serializing)]
     hash: Hash, // Sha256 hash of [signature, data].
 }
@@ -59,21 +63,36 @@ impl Signable for CrdsValue {
 
 /// Type of the replicated value
 /// These are labels for values in a record that is associated with `Pubkey`
+/// 副本值的类型
 #[derive(PartialEq, Hash, Eq, Clone, Debug)]
 pub enum CrdsValueLabel {
+    /// 旧格式连接信息
     LegacyContactInfo(Pubkey),
+    /// 投票信息，投票索引
     Vote(VoteIndex, Pubkey),
+    /// 最低时隙
     LowestSlot(Pubkey),
+    /// 旧格式快照哈希
     LegacySnapshotHashes(Pubkey),
+    /// 纪元时隙，纪元时隙索引
     EpochSlots(EpochSlotsIndex, Pubkey),
+    /// 账户哈希
     AccountsHashes(Pubkey),
+    /// 旧格式版本信息
     LegacyVersion(Pubkey),
+    /// 版本信息
     Version(Pubkey),
+    /// 节点实例
     NodeInstance(Pubkey),
+    /// 复制分片，复制分片索引
     DuplicateShred(DuplicateShredIndex, Pubkey),
+    /// 快照哈希
     SnapshotHashes(Pubkey),
+    /// 连接信息
     ContactInfo(Pubkey),
+    /// 重启最后一个投票分叉
     RestartLastVotedForkSlots(Pubkey),
+    /// 重启最终的分叉
     RestartHeaviestFork(Pubkey),
 }
 

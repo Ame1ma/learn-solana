@@ -1,3 +1,5 @@
+//! 集群信息指标
+
 use {
     crate::crds_gossip::CrdsGossip,
     itertools::Itertools,
@@ -12,28 +14,34 @@ use {
     },
 };
 
+/// 计数器，用来记时间或者次数，用于统计，只记递增的
 #[derive(Default)]
 pub(crate) struct Counter(AtomicU64);
 
 impl Counter {
+    /// 增加耗时记录
     pub(crate) fn add_measure(&self, x: &mut Measure) {
         x.stop();
         self.0.fetch_add(x.as_us(), Ordering::Relaxed);
     }
+    /// 增加耗时记录，raw
     pub(crate) fn add_relaxed(&self, x: u64) {
         self.0.fetch_add(x, Ordering::Relaxed);
     }
+    /// 清零
     fn clear(&self) -> u64 {
         self.0.swap(0, Ordering::Relaxed)
     }
 }
 
+/// 用来包装守卫，在结束时计时
 pub(crate) struct TimedGuard<'a, T> {
     guard: T,
     timer: Measure,
     counter: &'a Counter,
 }
 
+/// 本身是个守卫，结束时计时
 pub(crate) struct ScopedTimer<'a> {
     clock: Instant,
     metric: &'a AtomicU64,
@@ -87,6 +95,7 @@ impl<'a, T> Drop for TimedGuard<'a, T> {
     }
 }
 
+/// 八卦协议的统计信息
 #[derive(Default)]
 pub struct GossipStats {
     pub(crate) all_tvu_peers: Counter,

@@ -1,4 +1,5 @@
 //! A command-line executable for monitoring a cluster's gossip plane.
+//! 监控 gossip 平面的命令行
 
 use {
     clap::{

@@ -98,6 +98,7 @@ pub const MESSAGE_HEADER_LENGTH: usize = 3;
 /// access the same read-write accounts are processed sequentially.
 ///
 /// [PoH]: https://docs.solanalabs.com/consensus/synchronization
+/// 消息头
 #[cfg_attr(feature = "frozen-abi", derive(AbiExample))]
 #[cfg_attr(
     feature = "serde",
@@ -110,14 +111,17 @@ pub struct MessageHeader {
     /// valid. The signers of those signatures must match the first
     /// `num_required_signatures` of [`Message::account_keys`].
     // NOTE: Serialization-related changes must be paired with the direct read at sigverify.
+    /// 需要的签名数
     pub num_required_signatures: u8,
 
     /// The last `num_readonly_signed_accounts` of the signed keys are read-only
     /// accounts.
+    /// 只读签名账户数
     pub num_readonly_signed_accounts: u8,
 
     /// The last `num_readonly_unsigned_accounts` of the unsigned keys are
     /// read-only accounts.
+    /// 只读非签名账户数
     pub num_readonly_unsigned_accounts: u8,
 }
 

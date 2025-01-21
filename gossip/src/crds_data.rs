@@ -39,29 +39,45 @@ pub(crate) const MAX_EPOCH_SLOTS: EpochSlotsIndex = 255;
 /// CrdsData that defines the different types of items CrdsValues can hold
 /// * Merge Strategy - Latest wallclock is picked
 /// * LowestSlot index is deprecated
+/// crds 数据，和标签里的类型是对应的
+/// 每种都有 from：来源，wallclock：值创建时的现实本地时间
 #[allow(clippy::large_enum_variant)]
 #[cfg_attr(feature = "frozen-abi", derive(AbiExample, AbiEnumVisitor))]
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub enum CrdsData {
+    /// 旧格式连接信息
     #[allow(private_interfaces)]
     LegacyContactInfo(LegacyContactInfo),
+    /// 投票信息
     Vote(VoteIndex, Vote),
+    /// 已弃用，最低时隙
     LowestSlot(/*DEPRECATED:*/ u8, LowestSlot),
+    /// 已弃用，旧格式快照哈希
     #[allow(private_interfaces)]
     LegacySnapshotHashes(LegacySnapshotHashes), // Deprecated
+    /// 已弃用，账户哈希
     #[allow(private_interfaces)]
     AccountsHashes(AccountsHashes), // Deprecated
+    /// 纪元时隙
     EpochSlots(EpochSlotsIndex, EpochSlots),
+    /// 旧格式版本信息
     #[allow(private_interfaces)]
     LegacyVersion(LegacyVersion),
+    /// 版本信息
     #[allow(private_interfaces)]
     Version(Version),
+    /// 节点实例
     #[allow(private_interfaces)]
     NodeInstance(NodeInstance),
+    /// 重复碎屑
     DuplicateShred(DuplicateShredIndex, DuplicateShred),
+    /// 快照哈希
     SnapshotHashes(SnapshotHashes),
+    /// 连接信息
     ContactInfo(ContactInfo),
+    /// 重启，最后一次投票的分叉时隙
     RestartLastVotedForkSlots(RestartLastVotedForkSlots),
+    /// 重启，最重分叉
     RestartHeaviestFork(RestartHeaviestFork),
 }
 
@@ -200,6 +216,7 @@ impl CrdsData {
     }
 }
 
+/// 已弃用，账户哈希
 #[cfg_attr(feature = "frozen-abi", derive(AbiExample))]
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub(crate) struct AccountsHashes {
@@ -239,13 +256,17 @@ impl AccountsHashes {
     }
 }
 
+/// 已弃用，旧格式快照哈希
 type LegacySnapshotHashes = AccountsHashes;
 
+/// 快照哈希
 #[cfg_attr(feature = "frozen-abi", derive(AbiExample))]
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct SnapshotHashes {
     pub from: Pubkey,
+    /// 全快照
     pub full: (Slot, Hash),
+    /// 增量快照
     pub incremental: Vec<(Slot, Hash)>,
     pub wallclock: u64,
 }
@@ -268,11 +289,14 @@ impl Sanitize for SnapshotHashes {
     }
 }
 
+/// 已弃用，最低时隙
 #[cfg_attr(feature = "frozen-abi", derive(AbiExample))]
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct LowestSlot {
+    /// 来源
     pub(crate) from: Pubkey,
     root: Slot, //deprecated
+    /// 最低时隙
     pub lowest: Slot,
     slots: BTreeSet<Slot>,                        //deprecated
     stash: Vec<deprecated::EpochIncompleteSlots>, //deprecated
@@ -323,12 +347,17 @@ impl Sanitize for LowestSlot {
     }
 }
 
+/// 投票信息
 #[cfg_attr(feature = "frozen-abi", derive(AbiExample))]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Vote {
+    /// 来自于
     pub(crate) from: Pubkey,
+    /// 交易数据
     transaction: Transaction,
+    /// 挂钟
     pub(crate) wallclock: u64,
+    /// 时隙
     #[serde(skip_serializing)]
     slot: Option<Slot>,
 }
@@ -391,6 +420,7 @@ impl<'de> Deserialize<'de> for Vote {
     }
 }
 
+/// 旧格式版本信息
 #[cfg_attr(feature = "frozen-abi", derive(AbiExample))]
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub(crate) struct LegacyVersion {
@@ -407,11 +437,13 @@ impl Sanitize for LegacyVersion {
     }
 }
 
+/// 版本信息
 #[cfg_attr(feature = "frozen-abi", derive(AbiExample))]
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Version {
     from: Pubkey,
     wallclock: u64,
+    /// 新格式，多了特性集
     version: solana_version::LegacyVersion2,
 }
 
@@ -448,12 +480,15 @@ impl Version {
     }
 }
 
+/// 节点实例
 #[cfg_attr(feature = "frozen-abi", derive(AbiExample))]
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub(crate) struct NodeInstance {
     from: Pubkey,
     wallclock: u64,
+    /// 节点实例创建时的时间戳
     timestamp: u64, // Timestamp when the instance was created.
+    /// 实例token
     token: u64,     // Randomly generated value at node instantiation.
 }
 

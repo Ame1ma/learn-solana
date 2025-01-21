@@ -25,6 +25,46 @@
 //! A value is updated to a new version if the labels match, and the value
 //! wallclock is later, or the value hash is greater.
 
+//! `CRDS`（Cluster Replicated Data Store）是 Solana 网络中的一个重要模块，负责在分布式网络中以异步方式更新和存储数据。它采用了一种分布式数据库的设计，用于处理 Solana 节点之间的状态同步和信息传播。下面将详细介绍 CRDS 的工作原理及其关键概念。
+//! ### 1. **CRDS 结构**
+//! 在 Solana 中，CRDS 负责管理和存储有关网络的元数据。每个节点（Validator）都会维护一份 CRDS 表，其中包含了它所了解的各种信息。这些信息是由 `CrdsValue` 类型的值组成，而这些值有特定的标签（`CrdsValueLabel`）来标识。
+//! ### 2. **数据存储方式**
+//! 在 CRDS 中，数据是通过以下关系来组织和存储的：
+//! - **1 Pubkey 对应多个 CrdsValueLabels**
+//! - **1 CrdsValueLabel 对应一个 CrdsValue**
+//! 一个节点的 `Pubkey` 是唯一的，它作为一组记录的标识符。这些记录包含了多个标签（`CrdsValueLabel`），每个标签映射到一个具体的值（`CrdsValue`）。这些标签被归类到同一个记录中。
+//! 例如：
+//! - 一个节点的 `Pubkey` 可能会有多个 `CrdsValueLabel`，每个标签表示网络中的某些信息（如节点的投票、状态等）。
+//! - 每个 `CrdsValueLabel` 映射到一个具体的值（`CrdsValue`），这些值可以是有关该节点的具体信息。
+//! ### 3. **数据存储与更新**
+//! 数据是通过 `CrdsValueLabel(Pubkey) -> CrdsValue` 这种映射方式存储的。这种结构允许数据的部分更新传播，而不需要整个记录的更新。例如，如果某个节点更新了它的一部分信息（如投票信息），它只会更新对应的 `CrdsValueLabel`，而不需要修改整个节点的记录。
+//! #### 关键点：
+//! - **部分记录更新**：Solana 支持部分记录更新，这意味着每个标签（`CrdsValueLabel`）的更新是独立的，不会影响整个记录的其他部分。
+//! - **记录更新不是原子性的**：由于记录中的数据是分散存储的，更新操作是局部的，因此不是一个原子操作。部分数据更新会被传播到网络中，其他节点可以逐渐获得更新。
+//! ### 4. **标签和枚举**
+//! CRDS 中的标签和枚举是非常灵活的，允许动态地为记录添加新的标签。例如，如果一个节点需要存储额外的元数据，只需要将新的标签添加到 `CrdsValueLabel` 和 `CrdsValue` 枚举中。这使得 CRDS 能够在不同的场景中适应各种需求。
+//! ### 5. **数据合并策略**
+//! 为了确保数据一致性和合并不同版本的数据，CRDS 中实现了一个合并策略。合并策略的实现函数是：`fn overrides(value: &CrdsValue, other: &VersionedCrdsValue) -> bool`。
+//! 合并策略的基本原则如下：
+//! - **更新条件**：如果新版本的数据标签匹配，并且它的 **wallclock 时间**（表示数据的更新时间）比现有数据的 wallclock 时间晚，或者它的 **数据哈希**（用于表示数据的版本）更大，那么新数据就会覆盖旧数据。
+//!   这意味着，数据的版本比较不仅仅基于时间，还包括数据本身的哈希值。这个机制保证了网络中数据的一致性，并且避免了不必要的冲突。
+//! ### 6. **工作流程**
+//! 在 Solana 中，CRDS 通过 Gossip 协议在节点之间传播这些数据。每个节点维护一份 CRDS 数据库，其中包括了网络中其他节点的状态信息、投票情况、区块信息等。节点通过以下方式进行数据同步：
+//! 1. **节点通过 Gossip 接收数据**：节点接收到其他节点广播的更新信息时，会根据 CRDS 的合并策略对自己的 CRDS 数据库进行更新。
+//! 2. **局部更新传播**：每次更新都只是针对某个特定标签（`CrdsValueLabel`）的数据进行更新，而不是整个记录。这减少了网络负载，并且提高了数据传播的效率。
+//! ### 7. **应用场景**
+//! CRDS 在 Solana 中的应用场景主要是：
+//! - **节点信息同步**：验证者节点会通过 CRDS Gossip 协议与其他节点同步其投票信息、状态信息等。
+//! - **网络状态管理**：每个节点通过 CRDS 表了解网络中其他节点的状态，以便做出投票、选择区块等决策。
+//! - **分布式状态更新**：由于 CRDS 支持部分数据更新和局部合并，它适合于 Solana 这样的高频交易环境，能够迅速传播最新的网络状态。
+//! ### 8. **CRDS 的优点**
+//! - **高效的网络通信**：CRDS 使用 Gossip 协议高效传播信息，通过局部更新减少了带宽消耗。
+//! - **去中心化**：每个节点都有自己的 CRDS 数据库，没有中央数据库或控制点，这增强了网络的容错能力。
+//! - **动态扩展性**：CRDS 允许在不改变整个数据结构的情况下，向记录中添加新的标签，从而适应网络中的不同需求。
+//! - **容错和一致性**：由于采用合并策略，CRDS 保证了数据在不同节点之间的一致性，避免了版本冲突。
+//! ### 总结
+//! CRDS 是 Solana 网络中的一个分布式数据库模块，负责以高效和异步的方式在验证者节点之间传播网络状态和元数据。它通过 `CrdsValue` 和 `CrdsValueLabel` 实现了灵活的数据存储和更新机制，使得节点能够高效地同步和更新彼此的状态。CRDS 的设计使得 Solana 网络具备高容错性和高扩展性，支持高吞吐量和低延迟的分布式系统。
+
 use {
     crate::{
         contact_info::ContactInfo,
@@ -61,8 +101,16 @@ const VOTE_SLOTS_METRICS_CAP: usize = 100;
 // log2(500k) = ~18.9.
 const SIGNATURE_SAMPLE_LEADING_ZEROS: u32 = 19;
 
+/// CRDS（Cluster Radio Gossip Database System）
+/// 在 Solana 中，CRDS Gossip 的作用是将网络中的信息（如验证者信息、交易状态等）通过 Gossip 协议广播到其他节点。
+/// 具体来说，CRDS Gossip 主要负责以下几个方面的信息传播：
+/// 节点状态信息：包括节点是否在线、节点的性能、节点是否处于领导状态等。
+/// 区块和投票信息：验证者投票的结果、区块是否被确认、验证者的投票情况等。
+/// 网络健康状态：比如当前网络是否有分叉，或者节点是否存在延迟等。
 pub struct Crds {
     /// Stores the map of labels and values
+    /// 按插入序排序的键值表
+    /// crds类型标签映射到值
     table: IndexMap<CrdsValueLabel, VersionedCrdsValue>,
     cursor: Cursor, // Next insert ordinal location.
     shards: CrdsShards,
@@ -118,16 +166,21 @@ pub(crate) struct CrdsStats {
 }
 
 /// This structure stores some local metadata associated with the CrdsValue
+/// 版本化 crds 值
 #[derive(PartialEq, Eq, Debug, Clone)]
 pub struct VersionedCrdsValue {
     /// Ordinal index indicating insert order.
+    /// 插入顺序
     ordinal: u64,
+    /// crds 值
     pub value: CrdsValue,
     /// local time when updated
+    /// 升级时的本地时间戳
     pub(crate) local_timestamp: u64,
     /// None -> value upserted by GossipRoute::{LocalMessage,PullRequest}
     /// Some(0) -> value upserted by GossipRoute::PullResponse
     /// Some(k) if k > 0 -> value upserted by GossipRoute::PushMessage w/ k - 1 push duplicates
+    /// 用于追踪 CRDS 数据项在 Gossip 协议中通过推送消息接收的次数
     num_push_recv: Option<u8>,
 }
 

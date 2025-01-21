@@ -1,11 +1,14 @@
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
+/// 数据预算
 #[derive(Default)]
 pub struct DataBudget {
     // Amount of bytes we have in the budget to send.
+    /// 预算中要发送的字节数
     bytes: AtomicUsize,
     // Last time that we upped the bytes count, used
     // to detect when to up the bytes budget again
+    /// 上次发送的字节数，用于检测何时再次增加字节预算
     asof: AtomicU64,
 }
 

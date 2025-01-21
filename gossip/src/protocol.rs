@@ -57,6 +57,7 @@ pub(crate) enum Protocol {
     // Update count_packets_received if new variants are added here.
 }
 
+/// ping 缓存
 pub(crate) type Ping = ping_pong::Ping<GOSSIP_PING_TOKEN_SIZE>;
 pub(crate) type PingCache = ping_pong::PingCache<GOSSIP_PING_TOKEN_SIZE>;
 

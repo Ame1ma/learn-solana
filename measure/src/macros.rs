@@ -71,6 +71,7 @@
 /// let (result, measure) = measure_time!(meow());
 /// let (result, measure_us) = measure_us!(meow());
 /// ```
+/// 对函数执行时间计时
 #[macro_export]
 macro_rules! measure_time {
     ($val:expr, $name:tt $(,)?) => {{

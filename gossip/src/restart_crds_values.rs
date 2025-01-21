@@ -9,14 +9,19 @@ use {
     thiserror::Error,
 };
 
+/// 重启，最后一次投票的时隙
 #[cfg_attr(feature = "frozen-abi", derive(AbiExample))]
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
 pub struct RestartLastVotedForkSlots {
     pub from: Pubkey,
     pub wallclock: u64,
+    /// 时隙偏移
     offsets: SlotsOffsets,
+    /// 最后投票的时隙
     pub last_voted_slot: Slot,
+    /// 最后投票的哈希
     pub last_voted_hash: Hash,
+    /// 碎屑版本
     pub shred_version: u16,
 }
 
@@ -26,14 +31,19 @@ pub enum RestartLastVotedForkSlotsError {
     LastVotedForkEmpty,
 }
 
+/// 重启后最重分叉
 #[cfg_attr(feature = "frozen-abi", derive(AbiExample))]
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
 pub struct RestartHeaviestFork {
     pub from: Pubkey,
     pub wallclock: u64,
+    /// 最后时隙
     pub last_slot: Slot,
+    /// 最后时隙的哈希
     pub last_slot_hash: Hash,
+    /// 观察到的质押
     pub observed_stake: u64,
+    /// 碎屑版本
     pub shred_version: u16,
 }
 

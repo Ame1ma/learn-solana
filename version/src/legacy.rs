@@ -8,24 +8,35 @@ use {
 };
 
 // Older version structure used earlier 1.3.x releases
+/// 旧格式版本信息
 #[cfg_attr(feature = "frozen-abi", derive(AbiExample))]
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct LegacyVersion1 {
+    /// 主版本
     major: u16,
+    /// 次版本
     minor: u16,
+    /// 补丁版本
     patch: u16,
+    /// 提交哈希
     commit: Option<u32>, // first 4 bytes of the sha1 commit hash
 }
 
 impl Sanitize for LegacyVersion1 {}
 
+/// 版本格式信息
 #[cfg_attr(feature = "frozen-abi", derive(AbiExample))]
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct LegacyVersion2 {
+    /// 主版本
     pub major: u16,
+    /// 次版本
     pub minor: u16,
+    /// 补丁版本
     pub patch: u16,
+    /// 提交哈希
     pub commit: Option<u32>, // first 4 bytes of the sha1 commit hash
+    /// 特性集
     pub feature_set: u32,    // first 4 bytes of the FeatureSet identifier
 }
 

@@ -11,11 +11,15 @@ use {
 };
 
 pub const MAX_SLOTS_PER_ENTRY: usize = 2048 * 8;
+/// 非压缩时隙
 #[cfg_attr(feature = "frozen-abi", derive(AbiExample))]
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct Uncompressed {
+    /// 第一个时隙
     pub first_slot: Slot,
+    /// 时隙个数
     pub num: usize,
+    /// 时隙
     pub slots: BitVec<u8>,
 }
 
@@ -40,11 +44,17 @@ impl Sanitize for Uncompressed {
     }
 }
 
+/// Flate2 是 DEFLATE 算法的一个实现，它通常用于对数据进行压缩和解压缩。
+/// DEFLATE 是一种无损压缩算法，广泛用于许多流行的文件格式，如 ZIP 和 GZIP。
+/// Flate2 是 Rust 编程语言中的一个库，提供了 DEFLATE 算法的压缩和解压缩功能。
 #[cfg_attr(feature = "frozen-abi", derive(AbiExample))]
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Eq)]
 pub struct Flate2 {
+    /// 第一个时隙
     pub first_slot: Slot,
+    /// 数量
     pub num: usize,
+    /// 压缩后数据
     #[serde(with = "serde_bytes")]
     pub compressed: Vec<u8>,
 }
@@ -156,10 +166,13 @@ impl Uncompressed {
     }
 }
 
+/// 压缩的时隙
 #[cfg_attr(feature = "frozen-abi", derive(AbiExample, AbiEnumVisitor))]
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub enum CompressedSlots {
+    /// 压缩的
     Flate2(Flate2),
+    /// 不压缩的
     Uncompressed(Uncompressed),
 }
 
@@ -225,11 +238,14 @@ impl CompressedSlots {
     }
 }
 
+/// 纪元时隙
 #[cfg_attr(feature = "frozen-abi", derive(AbiExample))]
 #[derive(Serialize, Deserialize, Clone, Default, PartialEq, Eq)]
 pub struct EpochSlots {
+    /// 来源
     pub from: Pubkey,
     pub slots: Vec<CompressedSlots>,
+    /// 创建时的本地现实时间
     pub wallclock: u64,
 }
 

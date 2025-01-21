@@ -37,15 +37,24 @@ use {
     tokio::runtime::Runtime,
 };
 
+/// 本地admin rpc元数据
 #[derive(Clone)]
 pub struct AdminRpcRequestMetadata {
+    /// rpc 地址
     pub rpc_addr: Option<SocketAddr>,
+    /// 启动时间
     pub start_time: SystemTime,
+    /// 启动进度
     pub start_progress: Arc<RwLock<ValidatorStartProgress>>,
+    /// 退出信号
     pub validator_exit: Arc<RwLock<Exit>>,
+    /// 投票人密钥对
     pub authorized_voter_keypairs: Arc<RwLock<Vec<Arc<Keypair>>>>,
+    /// 塔式共识存储
     pub tower_storage: Arc<dyn TowerStorage>,
+    /// 覆盖节点质押量
     pub staked_nodes_overrides: Arc<RwLock<HashMap<Pubkey, u64>>>,
+    /// 
     pub post_init: Arc<RwLock<Option<AdminRpcRequestMetadataPostInit>>>,
     pub rpc_to_plugin_manager_sender: Option<Sender<GeyserPluginManagerRequest>>,
 }
@@ -743,7 +752,9 @@ fn rpc_account_index_from_account_index(account_index: &AccountIndex) -> RpcAcco
 }
 
 // Start the Admin RPC interface
+/// 启动本地 admin rpc 服务
 pub fn run(ledger_path: &Path, metadata: AdminRpcRequestMetadata) {
+    /// 监听的 socket 文件路径
     let admin_rpc_path = admin_rpc_path(ledger_path);
 
     let event_loop = tokio::runtime::Builder::new_multi_thread()
@@ -753,10 +764,12 @@ pub fn run(ledger_path: &Path, metadata: AdminRpcRequestMetadata) {
         .build()
         .unwrap();
 
+    /// 创建线程进行监听
     Builder::new()
         .name("solAdminRpc".to_string())
         .spawn(move || {
             let mut io = MetaIoHandler::default();
+            /// handler 在这里
             io.extend_with(AdminRpcImpl.to_delegate());
 
             let validator_exit = metadata.validator_exit.clone();
@@ -780,6 +793,7 @@ pub fn run(ledger_path: &Path, metadata: AdminRpcRequestMetadata) {
                             close_handle.close();
                         }));
 
+                    /// 在此阻塞
                     server.wait();
                 }
             }

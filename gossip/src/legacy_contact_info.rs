@@ -14,33 +14,47 @@ use {
 };
 
 /// Structure representing a node on the network
+/// 节点在网络中的连接信息
 #[cfg_attr(feature = "frozen-abi", derive(AbiExample))]
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub(crate) struct LegacyContactInfo {
+    /// 节点公钥
     id: Pubkey,
     /// gossip address
+    /// 八卦地址
     gossip: SocketAddr,
     /// address to connect to for replication
+    /// tvu 地址
     tvu: SocketAddr,
     /// TVU over QUIC protocol.
+    /// tvu quic 地址
     tvu_quic: SocketAddr,
     /// repair service over QUIC protocol.
+    /// 修复服务 quic 地址
     serve_repair_quic: SocketAddr,
     /// transactions address
+    /// tpu 地址
     tpu: SocketAddr,
     /// address to forward unprocessed transactions to
+    /// tpu 转发地址
     tpu_forwards: SocketAddr,
     /// address to which to send bank state requests
+    /// tpu 投票地址
     tpu_vote: SocketAddr,
     /// address to which to send JSON-RPC requests
+    /// rpc 地址
     rpc: SocketAddr,
     /// websocket for JSON-RPC push notifications
+    /// rpc 订阅地址
     rpc_pubsub: SocketAddr,
     /// address to send repair requests to
+    /// 修复服务 地址
     serve_repair: SocketAddr,
     /// latest wallclock picked
+    /// 最新选的 挂钟
     wallclock: u64,
     /// node shred version
+    /// 碎屑版本
     shred_version: u16,
 }
 

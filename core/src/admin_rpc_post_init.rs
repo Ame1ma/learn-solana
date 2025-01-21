@@ -13,8 +13,10 @@ use {
     },
 };
 
+/// 本地 admin rpc 初始化后
 #[derive(Clone)]
 pub struct AdminRpcRequestMetadataPostInit {
+    /// 集群信息
     pub cluster_info: Arc<ClusterInfo>,
     pub bank_forks: Arc<RwLock<BankForks>>,
     pub vote_account: Pubkey,

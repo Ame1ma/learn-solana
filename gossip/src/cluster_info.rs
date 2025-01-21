@@ -12,6 +12,8 @@
 //! * layer 2 - Everyone else, if layer 1 is `2^10`, layer 2 should be able to fit `2^20` number of nodes.
 //!
 //! Bank needs to provide an interface for us to query the stake weight
+//! 网络分为3层，leader，高权重节点，其他节点
+//! 需要从银行找到权重排序
 
 use {
     crate::{
@@ -119,6 +121,7 @@ pub const DEFAULT_CONTACT_SAVE_INTERVAL_MILLIS: u64 = 60_000;
 pub(crate) const CRDS_UNIQUE_PUBKEY_CAPACITY: usize = 8192;
 /// Minimum stake that a node should have so that its CRDS values are
 /// propagated through gossip (few types are exempted).
+/// 想让自己的值在八卦中进行传播，最少也需要这么多质押量，1SOL
 const MIN_STAKE_FOR_GOSSIP: u64 = solana_sdk::native_token::LAMPORTS_PER_SOL;
 /// Minimum number of staked nodes for enforcing stakes in gossip.
 const MIN_NUM_STAKED_NODES: usize = 500;
@@ -142,25 +145,41 @@ pub enum ClusterInfoError {
     TooManyIncrementalSnapshotHashes,
 }
 
+/// 集群信息
+/// 是一种通过 gossip 在整个集群所有验证器中共享的信息
 pub struct ClusterInfo {
     /// The network
+    /// 八卦协议
     pub gossip: CrdsGossip,
     /// set the keypair that will be used to sign crds values generated. It is unset only in tests.
+    /// 节点密钥对，用于 crds 值的签名
     keypair: RwLock<Arc<Keypair>>,
     /// Network entrypoints
+    /// 初始连接的对等体的连接信息
     entrypoints: RwLock<Vec<ContactInfo>>,
+    /// 出站预算
     outbound_budget: DataBudget,
+    /// 自己的连接信息
     my_contact_info: RwLock<ContactInfo>,
+    /// ping 缓存
     ping_cache: Mutex<PingCache>,
+    /// 八卦统计信息
     stats: GossipStats,
+    /// 本地待发送 crds 项
     local_message_pending_push_queue: Mutex<Vec<CrdsValue>>,
+    /// 打印 连接 debug 信息间隔
     contact_debug_interval: u64, // milliseconds, 0 = disabled
+    /// 存储连接信息间隔
     contact_save_interval: u64,  // milliseconds, 0 = disabled
+    /// 节点实例
     instance: RwLock<NodeInstance>,
+    /// 连接信息路径
     contact_info_path: PathBuf,
+    /// socket的监听范围，公网或公网内网都行
     socket_addr_space: SocketAddrSpace,
 }
 
+/// 拉取的数据
 struct PullData {
     from_addr: SocketAddr,
     caller: CrdsValue,
@@ -169,12 +188,15 @@ struct PullData {
 
 // Retains only CRDS values associated with nodes with enough stake.
 // (some crds types are exempted)
+/// 过滤，只保留足够质押量的节点的条目
+/// 想让自己的值在八卦网络中传播，至少也要质押点东西
 fn retain_staked(
     values: &mut Vec<CrdsValue>,
     stakes: &HashMap<Pubkey, u64>,
     drop_unstaked_node_instance: bool,
 ) {
     values.retain(|value| {
+        /// 前面那些是都保留的
         match value.data() {
             CrdsData::ContactInfo(_) => true,
             CrdsData::LegacyContactInfo(_) => true,
@@ -195,6 +217,7 @@ fn retain_staked(
             | CrdsData::RestartHeaviestFork(_)
             | CrdsData::RestartLastVotedForkSlots(_)
             | CrdsData::NodeInstance(_) => {
+                /// 这里开始进行过滤
                 let stake = stakes.get(&value.pubkey()).copied();
                 stake.unwrap_or_default() >= MIN_STAKE_FOR_GOSSIP
             }

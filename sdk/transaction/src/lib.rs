@@ -182,6 +182,7 @@ const PACKET_DATA_SIZE: usize = 1280 - 40 - 8;
 /// if the caller has knowledge that the first account of the constructed
 /// transaction's `Message` is both a signer and the expected fee-payer, then
 /// redundantly specifying the fee-payer is not strictly required.
+/// 交易（签名，消息（消息头，用到的账户，最近块哈希，指令（程序账户的索引，账户的索引，指令数据）））
 #[cfg(not(target_arch = "wasm32"))]
 #[cfg_attr(
     feature = "frozen-abi",
@@ -200,10 +201,12 @@ pub struct Transaction {
     /// [`MessageHeader`]: https://docs.rs/solana-message/latest/solana_message/struct.MessageHeader.html
     /// [`num_required_signatures`]: https://docs.rs/solana-message/latest/solana_message/struct.MessageHeader.html#structfield.num_required_signatures
     // NOTE: Serialization-related changes must be paired with the direct read at sigverify.
+    /// 签名
     #[cfg_attr(feature = "serde", serde(with = "short_vec"))]
     pub signatures: Vec<Signature>,
 
     /// The message to sign.
+    /// 消息
     pub message: Message,
 }
 

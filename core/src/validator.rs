@@ -503,23 +503,34 @@ impl ValidatorConfig {
 // `ValidatorStartProgress` contains status information that is surfaced to the node operator over
 // the admin RPC channel to help them to follow the general progress of node startup without
 // having to watch log messages.
+/// 验证器启动进度，用于暴露给本地 admin rpc的监控
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum ValidatorStartProgress {
+    /// 开始初始化
     Initializing, // Catch all, default state
+    /// 寻找 rpc 服务
     SearchingForRpcService,
+    /// 下载快照
     DownloadingSnapshot {
         slot: Slot,
         rpc_addr: SocketAddr,
     },
+    /// 清理块存储
     CleaningBlockStore,
+    /// 清理账户
     CleaningAccounts,
+    /// 加载账本
     LoadingLedger,
+    /// 处理账本
     ProcessingLedger {
         slot: Slot,
         max_slot: Slot,
     },
+    /// 开始服务
     StartingServices,
+    /// 暂停
     Halted, // Validator halted due to `--dev-halt-at-slot` argument
+    /// 等待达到 2/3
     WaitingForSupermajority {
         slot: Slot,
         gossip_stake_percent: u64,
@@ -527,6 +538,7 @@ pub enum ValidatorStartProgress {
 
     // `Running` is the terminal state once the validator fully starts and all services are
     // operational
+    /// 启动完成，运行中
     Running,
 }
 
@@ -2792,11 +2804,14 @@ fn cleanup_accounts_paths(config: &ValidatorConfig) {
     }
 }
 
+/// 验证快照配置有效性 
+/// 全快照拍摄时间是增量快照拍摄时间的整数倍，增量快照的拍摄时间是账户哈希的整数倍
 pub fn is_snapshot_config_valid(
     snapshot_config: &SnapshotConfig,
     accounts_hash_interval_slots: Slot,
 ) -> bool {
     // if the snapshot config is configured to *not* take snapshots, then it is valid
+    /// 如果不做快照，那就直接问有效
     if !snapshot_config.should_generate_snapshots() {
         return true;
     }
@@ -2809,11 +2824,13 @@ pub fn is_snapshot_config_valid(
         if incremental_snapshot_interval_slots == DISABLED_SNAPSHOT_ARCHIVE_INTERVAL {
             true
         } else {
+            /// 增量快照拍摄间隔时间必须是账户哈希的整数倍，并且全快照间隔时间要大于增量快照间隔时间
             incremental_snapshot_interval_slots >= accounts_hash_interval_slots
                 && incremental_snapshot_interval_slots % accounts_hash_interval_slots == 0
                 && full_snapshot_interval_slots > incremental_snapshot_interval_slots
         };
 
+    /// 全快照拍摄间隔时间必须是账户哈希的整数倍
     full_snapshot_interval_slots >= accounts_hash_interval_slots
         && full_snapshot_interval_slots % accounts_hash_interval_slots == 0
         && is_incremental_config_valid

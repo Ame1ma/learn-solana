@@ -66,6 +66,7 @@ pub enum Error {
     UnusedIpAddr(IpAddr),
 }
 
+/// 连接信息
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct ContactInfo {
     pubkey: Pubkey,
@@ -73,18 +74,25 @@ pub struct ContactInfo {
     wallclock: u64,
     // When the node instance was first created.
     // Identifies duplicate running instances.
+    /// 首次创建实例的时间，用于去重
     outset: u64,
+    /// 碎屑版本
     shred_version: u16,
+    /// 版本
     version: solana_version::Version,
     // All IP addresses are unique and referenced at least once in sockets.
+    /// 地址数组，不像旧格式是分开的
     #[serde(with = "short_vec")]
     addrs: Vec<IpAddr>,
     // All sockets have a unique key and a valid IP address index.
+    /// socket 数组
     #[serde(with = "short_vec")]
     sockets: Vec<SocketEntry>,
+    /// 扩展
     #[serde(with = "short_vec")]
     extensions: Vec<Extension>,
     // Only sanitized socket-addrs can be cached!
+    /// 缓存
     #[serde(skip_serializing)]
     cache: [Result<SocketAddr, Error>; SOCKET_CACHE_SIZE],
 }
