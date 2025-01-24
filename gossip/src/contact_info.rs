@@ -76,7 +76,7 @@ pub struct ContactInfo {
     // Identifies duplicate running instances.
     /// 首次创建实例的时间，用于去重
     outset: u64,
-    /// 碎屑版本
+    /// 消息分片版本
     shred_version: u16,
     /// 版本
     version: solana_version::Version,

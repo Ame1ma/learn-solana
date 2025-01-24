@@ -21,7 +21,7 @@ pub struct RestartLastVotedForkSlots {
     pub last_voted_slot: Slot,
     /// 最后投票的哈希
     pub last_voted_hash: Hash,
-    /// 碎屑版本
+    /// 消息分片版本
     pub shred_version: u16,
 }
 
@@ -43,7 +43,7 @@ pub struct RestartHeaviestFork {
     pub last_slot_hash: Hash,
     /// 观察到的质押
     pub observed_stake: u64,
-    /// 碎屑版本
+    /// 消息分片版本
     pub shred_version: u16,
 }
 

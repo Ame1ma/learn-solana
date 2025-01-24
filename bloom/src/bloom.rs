@@ -148,6 +148,10 @@ impl<T: AsRef<[u8]>> BloomHashIndex for T {
 /// Bloom filter that can be used concurrently.
 /// Concurrent reads/writes are safe, but are not atomic at the struct level,
 /// this means that reads may see partial writes.
+/// 布隆过滤器（Bloom Filter）是一种用于测试一个元素是否属于某个集合的数据结构。
+/// 它的特点是可以以非常小的空间和高效的速度判断某个元素是否在集合中，但它有一个“误判”的可能，
+/// 即可能会错误地判断某个元素属于集合。误判是指布隆过滤器可能告诉你某个元素存在于集合中，但实际上它并不在。
+/// 另一方面，布隆过滤器绝不会漏掉任何一个实际存在的元素。
 pub struct ConcurrentBloom<T> {
     num_bits: u64,
     keys: Vec<u64>,

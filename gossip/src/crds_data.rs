@@ -69,7 +69,7 @@ pub enum CrdsData {
     /// 节点实例
     #[allow(private_interfaces)]
     NodeInstance(NodeInstance),
-    /// 重复碎屑
+    /// 重复消息分片
     DuplicateShred(DuplicateShredIndex, DuplicateShred),
     /// 快照哈希
     SnapshotHashes(SnapshotHashes),
@@ -174,6 +174,7 @@ impl CrdsData {
         }
     }
 
+    /// 取公钥，都存在结构体里
     pub(crate) fn pubkey(&self) -> Pubkey {
         match &self {
             CrdsData::LegacyContactInfo(contact_info) => *contact_info.pubkey(),

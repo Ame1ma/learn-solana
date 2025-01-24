@@ -110,9 +110,12 @@ const SIGNATURE_SAMPLE_LEADING_ZEROS: u32 = 19;
 pub struct Crds {
     /// Stores the map of labels and values
     /// 按插入序排序的键值表
-    /// crds类型标签映射到值
+    /// 对crds的值是分种类存放在这个键值表里的
+    /// crds种类映射到值
     table: IndexMap<CrdsValueLabel, VersionedCrdsValue>,
+    /// 当前插入位置的游标
     cursor: Cursor, // Next insert ordinal location.
+    /// crds 消息分片
     shards: CrdsShards,
     nodes: IndexSet<usize>, // Indices of nodes' ContactInfo.
     // Indices of Votes keyed by insert order.
@@ -149,19 +152,25 @@ pub enum GossipRoute<'a> {
 
 type CrdsCountsArray = [usize; 14];
 
+/// crds数据统计
 pub(crate) struct CrdsDataStats {
     pub(crate) counts: CrdsCountsArray,
     pub(crate) fails: CrdsCountsArray,
     pub(crate) votes: LruCache<Slot, /*count:*/ usize>,
 }
 
+/// crds 统计信息
 #[derive(Default)]
 pub(crate) struct CrdsStats {
+    /// 拉取统计
     pub(crate) pull: CrdsDataStats,
+    /// 发送统计
     pub(crate) push: CrdsDataStats,
     /// number of times a message was first received via a PullResponse
     /// and that message was later received via a PushMessage
+    /// 冗余拉取响应次数
     pub(crate) num_redundant_pull_responses: u64,
+    /// 重复发送消息次数
     pub(crate) num_duplicate_push_messages: u64,
 }
 
@@ -184,15 +193,18 @@ pub struct VersionedCrdsValue {
     num_push_recv: Option<u8>,
 }
 
+/// 游标，指向crds表中将要发送的项
 #[derive(Clone, Copy, Default)]
 pub struct Cursor(u64);
 
 impl Cursor {
+    /// 当前位置
     fn ordinal(&self) -> u64 {
         self.0
     }
 
     // Updates the cursor position given the ordinal index of value consumed.
+    /// 推进游标
     #[inline]
     fn consume(&mut self, ordinal: u64) {
         self.0 = self.0.max(ordinal + 1);
@@ -200,7 +212,9 @@ impl Cursor {
 }
 
 impl VersionedCrdsValue {
+    /// 新建 crds 值
     fn new(value: CrdsValue, cursor: Cursor, local_timestamp: u64, route: GossipRoute) -> Self {
+        /// 根据方向不同，统计通过推送消息接收的次数
         let num_push_recv = match route {
             GossipRoute::LocalMessage => None,
             GossipRoute::PullRequest => None,
@@ -281,19 +295,28 @@ impl Crds {
         }
     }
 
+    /// 插入 crds 表
     pub fn insert(
         &mut self,
         value: CrdsValue,
         now: u64,
         route: GossipRoute,
     ) -> Result<(), CrdsError> {
+        /// 标签从值里面取
         let label = value.label();
+        /// 公钥
         let pubkey = value.pubkey();
+        /// 新建值
         let value = VersionedCrdsValue::new(value, self.cursor, now, route);
+        /// 统计信息
         let mut stats = self.stats.lock().unwrap();
+        /// 表里找到这个种类
         match self.table.entry(label) {
+            /// 空槽，映射中没有对应的键
             Entry::Vacant(entry) => {
+                /// 计入统计
                 stats.record_insert(&value, route);
+                /// 可插入键值对的索引位置
                 let entry_index = entry.index();
                 self.shards.insert(entry_index, &value);
                 match value.value.data() {
@@ -449,6 +472,7 @@ impl Crds {
     }
 
     /// Returns all entries inserted since the given cursor.
+    /// 获取游标后的项个数
     pub(crate) fn get_entries<'a>(
         &'a self,
         cursor: &'a mut Cursor,
@@ -802,6 +826,7 @@ impl CrdsDataStats {
 }
 
 impl CrdsStats {
+    /// 记录插入
     fn record_insert(&mut self, entry: &VersionedCrdsValue, route: GossipRoute) {
         match route {
             GossipRoute::LocalMessage => (),

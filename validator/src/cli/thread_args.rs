@@ -406,7 +406,7 @@ impl ThreadArg for TvuReceiveThreadsArg {
     }
 }
 
-/// 碎屑验证线程数，默认 1/2 核数
+/// 消息分片验证线程数，默认 1/2 核数
 struct TvuShredSigverifyThreadsArg;
 impl ThreadArg for TvuShredSigverifyThreadsArg {
     const NAME: &'static str = "tvu_shred_sigverify_threads";

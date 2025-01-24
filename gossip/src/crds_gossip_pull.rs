@@ -56,10 +56,13 @@ const FAILED_INSERTS_RETENTION_MS: u64 = 20_000;
 pub const FALSE_RATE: f64 = 0.1f64;
 pub const KEYS: f64 = 8f64;
 
+/// 基于布隆过滤器的 crds 过滤器
 #[cfg_attr(feature = "frozen-abi", derive(AbiExample))]
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct CrdsFilter {
+    /// 布隆过滤器
     pub filter: Bloom<Hash>,
+    /// 掩码
     mask: u64,
     mask_bits: u32,
 }

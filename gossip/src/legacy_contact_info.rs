@@ -54,7 +54,7 @@ pub(crate) struct LegacyContactInfo {
     /// 最新选的 挂钟
     wallclock: u64,
     /// node shred version
-    /// 碎屑版本
+    /// 消息分片版本
     shred_version: u16,
 }
 

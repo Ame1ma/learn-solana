@@ -935,7 +935,7 @@ pub fn main() {
             });
             return;
         }
-        /// 从别的节点拉取数据，修复碎屑，本地 rpc
+        /// 从别的节点拉取数据，修复消息分片，本地 rpc
         ("repair-shred-from-peer", Some(subcommand_matches)) => {
             let pubkey = value_t!(subcommand_matches, "pubkey", Pubkey).ok();
             let slot = value_t_or_exit!(subcommand_matches, "slot", u64);
@@ -1371,7 +1371,7 @@ pub fn main() {
             exit(1);
         }
     }
-    /// 预期碎屑版本
+    /// 预期消息分片版本
     // TODO: Once entrypoints are updated to return shred-version, this should
     // abort if it fails to obtain a shred-version, so that nodes always join
     // gossip with a valid shred-version. The code to adopt entrypoint shred

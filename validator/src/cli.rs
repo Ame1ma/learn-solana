@@ -1049,7 +1049,7 @@ pub fn app<'a>(version: &'a str, default_args: &'a DefaultArgs) -> App<'a, 'a> {
                 .default_value(default_args.snapshot_version.into())
                 .help("Output snapshot version"),
         )
-        /// 限制账本大小，最多存多少个碎屑
+        /// 限制账本大小，最多存多少个消息分片
         .arg(
             Arg::with_name("limit_ledger_size")
                 .long("limit-ledger-size")
@@ -1060,7 +1060,7 @@ pub fn app<'a>(version: &'a str, default_args: &'a DefaultArgs) -> App<'a, 'a> {
                 /* .default_value() intentionally not used here! */
                 .help("Keep this amount of shreds in root slots."),
         )
-        /// rocksdb 压缩存储碎屑的方式
+        /// rocksdb 压缩存储消息分片的方式
         .arg(
             Arg::with_name("rocksdb_shred_compaction")
                 .long("rocksdb-shred-compaction")
@@ -1074,7 +1074,7 @@ pub fn app<'a>(version: &'a str, default_args: &'a DefaultArgs) -> App<'a, 'a> {
                      'level': stores shreds using RocksDB's default (level) compaction.",
                 ),
         )
-        /// rocksdb 压缩存储碎屑的压缩算法
+        /// rocksdb 压缩存储消息分片的压缩算法
         .arg(
             Arg::with_name("rocksdb_ledger_compression")
                 .hidden(hidden_unless_forced())
@@ -1142,7 +1142,7 @@ pub fn app<'a>(version: &'a str, default_args: &'a DefaultArgs) -> App<'a, 'a> {
                 .validator(hash_validator)
                 .help("When wait-for-supermajority <x>, require the bank at <x> to have this hash"),
         )
-        /// 预期的碎屑版本
+        /// 预期的消息分片版本
         .arg(
             Arg::with_name("expected_shred_version")
                 .long("expected-shred-version")
@@ -2521,7 +2521,7 @@ pub fn app<'a>(version: &'a str, default_args: &'a DefaultArgs) -> App<'a, 'a> {
                 ),
         )
         .subcommand(
-            /// 从指定节点拉取信息，修复碎屑或时隙
+            /// 从指定节点拉取信息，修复消息分片或时隙
             SubCommand::with_name("repair-shred-from-peer")
                 .about("Request a repair from the specified validator")
                 .arg(
@@ -2544,7 +2544,7 @@ pub fn app<'a>(version: &'a str, default_args: &'a DefaultArgs) -> App<'a, 'a> {
                         .help("Slot to repair"),
                 )
                 .arg(
-                    /// 碎屑
+                    /// 消息分片
                     Arg::with_name("shred")
                         .long("shred")
                         .value_name("SHRED")

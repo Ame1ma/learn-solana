@@ -70,8 +70,11 @@ use {
 /// `CRDS Gossip` 是 Solana 网络中用来在节点之间传播和共享关键状态信息的机制。通过 Gossip 协议，Solana 实现了高效、去中心化的信息同步，确保网络中各个节点能够快速且一致地了解网络状态。它是 Solana 构建高吞吐量、高可扩展性区块链的关键组成部分之一。
 #[derive(Default)]
 pub struct CrdsGossip {
+    /// 八卦表
     pub crds: RwLock<Crds>,
+    /// 八卦发送
     pub push: CrdsGossipPush,
+    /// 八卦接收
     pub pull: CrdsGossipPull,
 }
 

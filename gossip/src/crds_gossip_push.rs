@@ -10,6 +10,13 @@
 //! 1. There is no `max hop`.  Messages are signed with a local wallclock.  If they are outside of
 //!    the local nodes wallclock window they are dropped silently.
 //! 2. The prune set is stored in a Bloom filter.
+//! 
+//! Plumtree 是一种优化的 分层广播协议，它帮助 Solana 网络高效地传播消息和数据（如交易、区块、验证信息等），
+//! 避免了传统广播协议中的不必要的冗余传输，确保数据传播更加高效和一致。
+//! 节点选择： 每个节点不仅仅是盲目地将消息广播给所有节点，而是根据一定的策略选择一部分节点进行传播。
+//! 减少冗余： 通过 Plumtree，网络中的每个节点不会向自己已经接收到的节点重新发送相同的数据，从而减少了冗余传播。
+//! 分层传播： Plumtree 的一个关键特性是它会根据节点的层级关系来选择传播路径。某个节点（比如 A）会选择特定的其他节点（比如 B、C）来进行消息传播，而这些节点再将信息传播给它们的子节点，形成树状传播结构。
+//! 每个节点的选择： 节点根据一定的规则（比如距离、节点的重要性、节点的“信誉”）来选择哪些节点接收消息。这样可以确保最重要的节点接收到最及时的数据，减少不必要的消息传递。
 
 use {
     crate::{
@@ -40,30 +47,48 @@ use {
     },
 };
 
+/// 八卦一次发送给多少节点
 const CRDS_GOSSIP_PUSH_FANOUT: usize = 9;
 // With a fanout of 9, a 2000 node cluster should only take ~3.5 hops to converge.
 // However since pushes are stake weighed, some trailing nodes
 // might need more time to receive values. 30 seconds should be plenty.
+/// 八卦发送超时时间，30s
 pub const CRDS_GOSSIP_PUSH_MSG_TIMEOUT_MS: u64 = 30000;
+/// 八卦修剪信息超时时间
 const CRDS_GOSSIP_PRUNE_MSG_TIMEOUT_MS: u64 = 500;
+/// 八卦修剪质押门槛pct
 const CRDS_GOSSIP_PRUNE_STAKE_THRESHOLD_PCT: f64 = 0.15;
+/// 八卦修剪最小入站节点数
 const CRDS_GOSSIP_PRUNE_MIN_INGRESS_NODES: usize = 2;
+/// 八卦最大发送集大小
 const CRDS_GOSSIP_PUSH_ACTIVE_SET_SIZE: usize = CRDS_GOSSIP_PUSH_FANOUT + 3;
 
+/// 八卦发送
 pub struct CrdsGossipPush {
     /// Active set of validators for push
+    /// 要发送的节点集
     active_set: RwLock<PushActiveSet>,
     /// Cursor into the crds table for values to push.
+    /// 指向要发送的 crds 项的游标
     crds_cursor: Mutex<Cursor>,
     /// Cache that tracks which validators a message was received from
     /// This cache represents a lagging view of which validators
     /// currently have this node in their `active_set`
+    /// 跟踪从哪个验证器接收到消息的缓存。
+    /// 此缓存表示当前哪些验证器在其active_set中具有此节点的滞后视图
+    /// 消息来源节点，和他们发送的消息的重复度得分
     received_cache: Mutex<ReceivedCache>,
+    /// 发送到节点的个数
     push_fanout: usize,
+    /// 消息超时
     pub(crate) msg_timeout: u64,
+    /// 清理超时
     pub prune_timeout: u64,
+    /// 发送过的总数
     pub num_total: AtomicUsize,
+    /// 旧数
     pub num_old: AtomicUsize,
+    /// 发送数
     pub num_pushes: AtomicUsize,
 }
 
@@ -83,11 +108,16 @@ impl Default for CrdsGossipPush {
     }
 }
 impl CrdsGossipPush {
+    /// 还有多少没有发送
     pub fn num_pending(&self, crds: &RwLock<Crds>) -> usize {
+        /// 获取当前游标
         let mut cursor: Cursor = *self.crds_cursor.lock().unwrap();
+        /// 获取游标后的项个数
         crds.read().unwrap().get_entries(&mut cursor).count()
     }
 
+    /// 清理接收缓存
+    /// 传入一些来源节点公钥
     pub(crate) fn prune_received_cache<I>(
         &self,
         self_pubkey: &Pubkey,
@@ -102,6 +132,7 @@ impl CrdsGossipPush {
             .into_iter()
             .flat_map(|origin| {
                 received_cache
+                    /// 清理对应公钥的
                     .prune(
                         self_pubkey,
                         origin,
@@ -114,6 +145,7 @@ impl CrdsGossipPush {
             .into_group_map()
     }
 
+    /// 现实时间窗口，从比现在少个超时时间，到比现在多个超时时间
     fn wallclock_window(&self, now: u64) -> impl RangeBounds<u64> {
         now.saturating_sub(self.msg_timeout)..=now.saturating_add(self.msg_timeout)
     }
@@ -121,22 +153,32 @@ impl CrdsGossipPush {
     /// Process a push message to the network.
     ///
     /// Returns origins' pubkeys of upserted values.
+    /// 发送消息
     pub(crate) fn process_push_message(
         &self,
         crds: &RwLock<Crds>,
         messages: Vec<(/*from:*/ Pubkey, Vec<CrdsValue>)>,
         now: u64,
     ) -> HashSet<Pubkey> {
+        /// 接收缓存
         let mut received_cache = self.received_cache.lock().unwrap();
+        /// crds
         let mut crds = crds.write().unwrap();
+        /// 现实时间窗口
         let wallclock_window = self.wallclock_window(now);
+        /// 来源节点集
         let mut origins = HashSet::new();
+        /// 遍历消息
         for (from, values) in messages {
+            /// 总数计数增加
             self.num_total.fetch_add(values.len(), Ordering::Relaxed);
+            /// 遍历值
             for value in values {
+                /// 值的现实时间不在时间窗口里则跳过
                 if !wallclock_window.contains(&value.wallclock()) {
                     continue;
                 }
+                /// 来源
                 let origin = value.pubkey();
                 match crds.insert(value, now, GossipRoute::PushMessage(&from)) {
                     Ok(()) => {

@@ -250,7 +250,7 @@ pub struct ValidatorConfig {
     pub expected_genesis_hash: Option<Hash>,
     /// 期望的银行哈希
     pub expected_bank_hash: Option<Hash>,
-    /// 期望的碎屑版本
+    /// 期望的消息分片版本
     pub expected_shred_version: Option<u16>,
     /// 不投票
     pub voting_disabled: bool,
@@ -271,7 +271,7 @@ pub struct ValidatorConfig {
     pub pubsub_config: PubSubConfig,
     /// 快照配置
     pub snapshot_config: SnapshotConfig,
-    /// 最大账本碎屑限制
+    /// 最大账本消息分片限制
     /// 用于控制每个 区块（block） 可以包含的最大 账本碎片 数量。
     /// 这个参数与 Solana 的账本存储和数据传播机制密切相关，影响节点如何处理账本数据以及网络中的数据传输效率
     pub max_ledger_shreds: Option<u64>,
@@ -385,7 +385,7 @@ pub struct ValidatorConfig {
     pub replay_forks_threads: NonZeroUsize,
     /// 重放交易线程数
     pub replay_transactions_threads: NonZeroUsize,
-    /// tvu 碎屑验证线程数
+    /// tvu 消息分片验证线程数
     pub tvu_shred_sigverify_threads: NonZeroUsize,
     /// 区块链的领导者（leader）创建新区块时，是否等待一个尚未确认的分叉区块（pending fork）完成重放。
     pub delay_leader_block_for_pending_fork: bool,

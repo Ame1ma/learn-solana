@@ -107,40 +107,57 @@ use {
 };
 
 /// milliseconds we sleep for between gossip requests
+/// 八卦请求之间的 sleep 间隔
 pub const GOSSIP_SLEEP_MILLIS: u64 = 100;
 /// A hard limit on incoming gossip messages
 /// Chosen to be able to handle 1Gbps of pure gossip traffic
 /// 128MB/PACKET_DATA_SIZE
+/// 八卦入站的最大流量限制
 const MAX_GOSSIP_TRAFFIC: usize = 128_000_000 / PACKET_DATA_SIZE;
+/// 八卦 ping 缓存容量
 const GOSSIP_PING_CACHE_CAPACITY: usize = 126976;
+/// 八卦 ping 缓存保留时间
 const GOSSIP_PING_CACHE_TTL: Duration = Duration::from_secs(1280);
+/// 八卦 ping 缓存速率限制延迟
 const GOSSIP_PING_CACHE_RATE_LIMIT_DELAY: Duration = Duration::from_secs(1280 / 64);
+/// 默认连接信息 debug 日志打印间隔
 pub const DEFAULT_CONTACT_DEBUG_INTERVAL_MILLIS: u64 = 10_000;
+/// 默认连接信息保存间隔
 pub const DEFAULT_CONTACT_SAVE_INTERVAL_MILLIS: u64 = 60_000;
 // Limit number of unique pubkeys in the crds table.
+/// crds 中唯一公钥的容量
 pub(crate) const CRDS_UNIQUE_PUBKEY_CAPACITY: usize = 8192;
 /// Minimum stake that a node should have so that its CRDS values are
 /// propagated through gossip (few types are exempted).
 /// 想让自己的值在八卦中进行传播，最少也需要这么多质押量，1SOL
 const MIN_STAKE_FOR_GOSSIP: u64 = solana_sdk::native_token::LAMPORTS_PER_SOL;
 /// Minimum number of staked nodes for enforcing stakes in gossip.
+/// 八卦网络最小需要的质押节点数
 const MIN_NUM_STAKED_NODES: usize = 500;
 
 // Must have at least one socket to monitor the TVU port
 // The unsafes are safe because we're using fixed, known non-zero values
+/// 最小 tvu sockets 数
 pub const MINIMUM_NUM_TVU_SOCKETS: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(1) };
+/// 默认 tvu sockets 数
 pub const DEFAULT_NUM_TVU_SOCKETS: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(8) };
 
+/// 集群信息 错误
 #[derive(Debug, PartialEq, Eq, Error)]
 pub enum ClusterInfoError {
+    /// 没有对等体
     #[error("NoPeers")]
     NoPeers,
+    /// 没有leader
     #[error("NoLeader")]
     NoLeader,
+    /// 连接信息不正确
     #[error("BadContactInfo")]
     BadContactInfo,
+    /// 八卦地址不正确
     #[error("BadGossipAddress")]
     BadGossipAddress,
+    /// 增量快照哈希过多
     #[error("TooManyIncrementalSnapshotHashes")]
     TooManyIncrementalSnapshotHashes,
 }
@@ -226,14 +243,19 @@ fn retain_staked(
 }
 
 impl ClusterInfo {
+    /// 新建集群信息
     pub fn new(
         contact_info: ContactInfo,
         keypair: Arc<Keypair>,
         socket_addr_space: SocketAddrSpace,
     ) -> Self {
+        /// 自己的连接信息的公钥要和自己的公钥对的上
         assert_eq!(contact_info.pubkey(), &keypair.pubkey());
+        /// 公钥
         let id = *contact_info.pubkey();
+        /// 自己
         let me = Self {
+            /// 
             gossip: CrdsGossip::default(),
             keypair: RwLock::new(keypair),
             entrypoints: RwLock::default(),

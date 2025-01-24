@@ -7,16 +7,22 @@ use {
     },
 };
 
+/// crds 消息分片
+/// shards 是一个包含多个消息分片的向量，
+/// 每个分片是一个 IndexMap，它将 CRDS 值的索引（usize）映射到它的哈希值（u64）
 #[derive(Clone)]
 pub struct CrdsShards {
     // shards[k] includes crds values which the first shard_bits of their hash
     // value is equal to k. Each shard is a mapping from crds values indices to
     // their hash value.
+    /// 消息分片的哈希
     shards: Vec<IndexMap<usize, u64>>,
+    /// 每个 crds 值会被划分为 2 ^ shard_bits 个消息分片
     shard_bits: u32,
 }
 
 impl CrdsShards {
+    /// 新建消息分片
     pub fn new(shard_bits: u32) -> Self {
         CrdsShards {
             shards: vec![IndexMap::new(); 1 << shard_bits],
@@ -24,8 +30,11 @@ impl CrdsShards {
         }
     }
 
+    /// 插入 crds 值
     pub fn insert(&mut self, index: usize, value: &VersionedCrdsValue) -> bool {
+        /// 计算哈希
         let hash = CrdsFilter::hash_as_u64(value.value.hash());
+        /// 根据哈希选择一个
         self.shard_mut(hash).insert(index, hash).is_none()
     }
 
@@ -75,6 +84,7 @@ impl CrdsShards {
         self.shards.index(shard_index)
     }
 
+    /// 获取索引位置的可变引用
     #[inline]
     fn shard_mut(&mut self, hash: u64) -> &mut IndexMap<usize, u64> {
         let shard_index = self.shard_index(hash);

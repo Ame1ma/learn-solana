@@ -7,26 +7,39 @@ use {
     std::collections::HashMap,
 };
 
+/// 推送集的条目数，每个条目都是个质押桶，所以是质押桶数
 const NUM_PUSH_ACTIVE_SET_ENTRIES: usize = 25;
 
 // Each entry corresponds to a stake bucket for
 //     min stake of { this node, crds value owner }
 // The entry represents set of gossip nodes to actively
 // push to for crds values belonging to the bucket.
+/// 这些节点集与 CRDS 值所有者的最小质押相关，并表示一组应该主动向其推送 CRDS 值的节点。
+/// 是一个质押桶列表
+/// 索引是质押量的sol位数，0位数放索引0，1位数放索引1，...
 #[derive(Default)]
 pub(crate) struct PushActiveSet([PushActiveSetEntry; NUM_PUSH_ACTIVE_SET_ENTRIES]);
 
 // Keys are gossip nodes to push messages to.
 // Values are which origins the node has pruned.
+/// 质押桶，每个质押桶里放的都是质押量的sol位数一样的节点，
+/// 比如都质押了十位数的sol，那就在一个桶里，都质押了百位数的在同一个桶里
+/// 键是八卦应该发送到的节点公钥
+/// 值是布隆过滤器，里面包含的是一个应该已经知道这条消息的节点的集合，比如是这条消息的来源
+/// 布隆过滤器可以快速判断一个值是不是在集合里，有一定概率把不在集合里的说成在集合里，不过一旦在集合里就一定会说在集合里
+/// 这样发送可以过滤掉已经知道这条消息的节点
 #[derive(Default)]
 struct PushActiveSetEntry(IndexMap</*node:*/ Pubkey, /*origins:*/ ConcurrentBloom<Pubkey>>);
 
 impl PushActiveSet {
+    /// 最小布隆项数
     #[cfg(debug_assertions)]
     const MIN_NUM_BLOOM_ITEMS: usize = 512;
+    /// 最小布隆项数
     #[cfg(not(debug_assertions))]
     const MIN_NUM_BLOOM_ITEMS: usize = crate::cluster_info::CRDS_UNIQUE_PUBKEY_CAPACITY;
 
+    /// 取需要推送的节点
     pub(crate) fn get_nodes<'a>(
         &'a self,
         pubkey: &'a Pubkey, // This node.
@@ -35,13 +48,17 @@ impl PushActiveSet {
         should_force_push: impl FnMut(&Pubkey) -> bool + 'a,
         stakes: &HashMap<Pubkey, u64>,
     ) -> impl Iterator<Item = &'a Pubkey> + 'a {
+        /// 取自己以及crds值来源的节点的最小值
         let stake = stakes.get(pubkey).min(stakes.get(origin));
+        /// 取这个数量级的质押桶
         self.get_entry(stake)
+             /// 从桶里面取
             .get_nodes(pubkey, origin, should_force_push)
     }
 
     // Prunes origins for the given gossip node.
     // We will stop pushing messages from the specified origins to the node.
+    /// 向布隆过滤器添加某个节点，即停止推送这些来源的消息
     pub(crate) fn prune(
         &self,
         pubkey: &Pubkey,    // This node.
@@ -49,16 +66,21 @@ impl PushActiveSet {
         origins: &[Pubkey], // CRDS value owners.
         stakes: &HashMap<Pubkey, u64>,
     ) {
+        /// 自己的质押量
         let stake = stakes.get(pubkey);
         for origin in origins {
+            /// 不过滤自己
             if origin == pubkey {
                 continue;
             }
+            /// 自己质押量与待过滤质押量的最小值
             let stake = stake.min(stakes.get(origin));
+            /// 向布隆过滤器添加
             self.get_entry(stake).prune(node, origin)
         }
     }
 
+    /// 加一批新的节点进来，然后重新洗牌，丢掉一些
     pub(crate) fn rotate<R: Rng>(
         &mut self,
         rng: &mut R,
@@ -68,10 +90,12 @@ impl PushActiveSet {
         nodes: &[Pubkey],
         stakes: &HashMap<Pubkey, u64>,
     ) {
+        /// 集群大小和最小布隆项数取最小值
         let num_bloom_filter_items = cluster_size.max(Self::MIN_NUM_BLOOM_ITEMS);
         // Active set of nodes to push to are sampled from these gossip nodes,
         // using sampling probabilities obtained from the stake bucket of each
         // node.
+        /// 取这些节点的桶的质押量的位数
         let buckets: Vec<_> = nodes
             .iter()
             .map(|node| get_stake_bucket(stakes.get(node)))
@@ -81,6 +105,7 @@ impl PushActiveSet {
         // is equal to `k`. The `entry` maintains set of gossip nodes to
         // actively push to for crds values belonging to this bucket.
         for (k, entry) in self.0.iter_mut().enumerate() {
+            /// 计算权重，位数 + 1 再取平方，应该是增大洗牌的时候的区分度
             let weights: Vec<u64> = buckets
                 .iter()
                 .map(|&bucket| {
@@ -96,19 +121,24 @@ impl PushActiveSet {
                     bucket.saturating_add(1).saturating_pow(2)
                 })
                 .collect();
+            /// 桶内洗牌
             entry.rotate(rng, size, num_bloom_filter_items, nodes, &weights);
         }
     }
 
+    /// 取某个数量级质押量的质押桶
     fn get_entry(&self, stake: Option<&u64>) -> &PushActiveSetEntry {
         &self.0[get_stake_bucket(stake)]
     }
 }
 
 impl PushActiveSetEntry {
+    /// 布隆失败率，用来配置新建的布隆过滤器
     const BLOOM_FALSE_RATE: f64 = 0.1;
+    /// 布隆最大比特，用来配置新建的布隆过滤器
     const BLOOM_MAX_BITS: usize = 1024 * 8 * 4;
 
+    /// 从桶里取要发送的节点，排除掉已经知道的节点
     fn get_nodes<'a>(
         &'a self,
         pubkey: &'a Pubkey, // This node.
@@ -122,13 +152,17 @@ impl PushActiveSetEntry {
             .filter(move |(node, bloom_filter)| {
                 // Bloom filter can return false positive for origin == pubkey
                 // but a node should always be able to push its own values.
+                /// 已经知道这条crds的节点不用发（布隆过滤器有可能把不知道当成知道
                 !bloom_filter.contains(origin)
+                    /// 来源是自己，目的不是自己的要发
                     || (pubkey_eq_origin && &pubkey != node)
+                    /// 开启强制发送的要发
                     || should_force_push(node)
             })
             .map(|(node, _bloom_filter)| node)
     }
 
+    /// 向布隆过滤器里增加值
     fn prune(
         &self,
         node: &Pubkey,   // Gossip node.
@@ -139,6 +173,7 @@ impl PushActiveSetEntry {
         }
     }
 
+    /// 加一批新的节点进来，然后重新洗牌，丢掉一些
     fn rotate<R: Rng>(
         &mut self,
         rng: &mut R,
@@ -147,26 +182,35 @@ impl PushActiveSetEntry {
         nodes: &[Pubkey],
         weights: &[u64],
     ) {
+        /// 权重和节点一样多
         debug_assert_eq!(nodes.len(), weights.len());
+        /// 都有权重且不为零
         debug_assert!(weights.iter().all(|&weight| weight != 0u64));
+        /// 洗牌，权重越大的指标出现的越早，与其权重成正比。
         let shuffle = WeightedShuffle::new("rotate-active-set", weights).shuffle(rng);
         for node in shuffle.map(|k| &nodes[k]) {
             // We intend to discard the oldest/first entry in the index-map.
+            /// 超过期望保留长度就不再加了
             if self.0.len() > size {
                 break;
             }
+            /// 目标地址里已经有了的
             if self.0.contains_key(node) {
                 continue;
             }
+            /// 给这个质押项新建布隆过滤器
             let bloom = ConcurrentBloom::from(Bloom::random(
                 num_bloom_filter_items,
                 Self::BLOOM_FALSE_RATE,
                 Self::BLOOM_MAX_BITS,
             ));
+            /// 把目的和源一样的加到过滤器里
             bloom.add(node);
+            /// 把质押项插进质押桶里
             self.0.insert(*node, bloom);
         }
         // Drop the oldest entry while preserving the ordering of others.
+        /// 把最老的项扔掉
         while self.0.len() > size {
             self.0.shift_remove_index(0);
         }
@@ -174,9 +218,13 @@ impl PushActiveSetEntry {
 }
 
 // Maps stake to bucket index.
+/// 质押量对应的桶索引，是看sol质押的位数，0位数放索引0，1位数放索引1，...
 fn get_stake_bucket(stake: Option<&u64>) -> usize {
+    /// 获取质押的 sol 数
     let stake = stake.copied().unwrap_or_default() / LAMPORTS_PER_SOL;
+    /// 获取质押了几位数的 sol，用 u64 的比特数减去质押的前导零的个数
     let bucket = u64::BITS - stake.leading_zeros();
+    /// 超过索引大小的就都放在最后一个元素里
     (bucket as usize).min(NUM_PUSH_ACTIVE_SET_ENTRIES - 1)
 }
 

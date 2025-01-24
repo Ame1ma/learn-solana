@@ -178,10 +178,12 @@ impl CrdsValue {
         self.data.wallclock()
     }
 
+    /// 取公钥
     pub(crate) fn pubkey(&self) -> Pubkey {
         self.data.pubkey()
     }
 
+    /// 取标签
     pub fn label(&self) -> CrdsValueLabel {
         let pubkey = self.data.pubkey();
         match self.data {

@@ -29,6 +29,7 @@ static_assertions::const_assert_eq!(PACKET_DATA_SIZE, 1232);
 ///   1280 is IPv6 minimum MTU
 ///   40 bytes is the size of the IPv6 header
 ///   8 bytes is the size of the fragment header
+/// 交易最大上限，1280是ipv6最小的最大传输单元，40是头，8是分段头
 pub const PACKET_DATA_SIZE: usize = 1280 - 40 - 8;
 
 #[cfg(feature = "bincode")]
