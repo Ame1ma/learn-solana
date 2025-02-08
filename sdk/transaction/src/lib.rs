@@ -232,6 +232,7 @@ pub struct Transaction {
 }
 
 impl Sanitize for Transaction {
+    /// 签名数需要正确，账户索引范围需正确
     fn sanitize(&self) -> result::Result<(), SanitizeError> {
         if self.message.header.num_required_signatures as usize > self.signatures.len() {
             return Err(SanitizeError::IndexOutOfBounds);
@@ -239,6 +240,7 @@ impl Sanitize for Transaction {
         if self.signatures.len() > self.message.account_keys.len() {
             return Err(SanitizeError::IndexOutOfBounds);
         }
+        // 对账户索引范围
         self.message.sanitize()
     }
 }

@@ -37,7 +37,7 @@ use {
     tokio::runtime::Runtime,
 };
 
-/// 本地admin rpc元数据
+/// 本地admin rpc状态数据
 #[derive(Clone)]
 pub struct AdminRpcRequestMetadata {
     /// rpc 地址

@@ -1,4 +1,5 @@
 //! 64-byte signature type.
+//! 64 字节的签名，用的是 ed25519 签名
 #![no_std]
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 #![cfg_attr(feature = "frozen-abi", feature(min_specialization))]
@@ -19,8 +20,10 @@ use {
 };
 
 /// Number of bytes in a signature
+/// 字节数
 pub const SIGNATURE_BYTES: usize = 64;
 /// Maximum string length of a base58 encoded signature
+/// 最长 base58
 const MAX_BASE58_SIGNATURE_LEN: usize = 88;
 
 #[repr(transparent)]
@@ -48,6 +51,7 @@ impl Signature {
 
 #[cfg(any(test, feature = "verify"))]
 impl Signature {
+    /// 调用库来验证签名
     pub(self) fn verify_verbose(
         &self,
         pubkey_bytes: &[u8],
@@ -58,6 +62,8 @@ impl Signature {
         publickey.verify_strict(message_bytes, &signature)
     }
 
+    /// 验证签名，用的是 ed25519 签名
+    /// 只用传入消息和公钥，签名在self的结构里里放着
     pub fn verify(&self, pubkey_bytes: &[u8], message_bytes: &[u8]) -> bool {
         self.verify_verbose(pubkey_bytes, message_bytes).is_ok()
     }

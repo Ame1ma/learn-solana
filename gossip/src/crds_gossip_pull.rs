@@ -559,10 +559,15 @@ impl CrdsGossipPull {
     }
 }
 
+/// crds 过期配置
 pub struct CrdsTimeouts<'a> {
+    /// 节点公钥
     pubkey: Pubkey,
+    /// 押给这个节点的质押列表，用来查找质押量
     stakes: &'a HashMap<Pubkey, /*lamports:*/ u64>,
+    /// 默认过期时间，没质押就按一个纪元算
     default_timeout: u64,
+    /// 不足一个纪元就按一个纪元作为扩展过期时间
     extended_timeout: u64,
 }
 
@@ -573,7 +578,9 @@ impl<'a> CrdsTimeouts<'a> {
         epoch_duration: Duration,
         stakes: &'a HashMap<Pubkey, u64>,
     ) -> Self {
+        /// 不足一个纪元就按一个纪元作为扩展过期时间
         let extended_timeout = default_timeout.max(epoch_duration.as_millis() as u64);
+        /// 没质押就按一个纪元算
         let default_timeout = if stakes.values().all(|&stake| stake == 0u64) {
             extended_timeout
         } else {
@@ -591,6 +598,7 @@ impl<'a> CrdsTimeouts<'a> {
 impl<'a> Index<&Pubkey> for CrdsTimeouts<'a> {
     type Output = u64;
 
+    /// 找超时时间
     fn index(&self, pubkey: &Pubkey) -> &Self::Output {
         if pubkey == &self.pubkey {
             &u64::MAX

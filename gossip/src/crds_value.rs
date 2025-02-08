@@ -19,10 +19,11 @@ use {
 
 /// CrdsValue that is replicated across the cluster
 /// 跨集群复制的 crds 值
+/// 包装了 CrdsData ，这样可以在包装结构里存放签名，从而给包装结构实现 Signable
 #[cfg_attr(feature = "frozen-abi", derive(AbiExample))]
 #[derive(Serialize, Clone, Debug, PartialEq, Eq)]
 pub struct CrdsValue {
-    /// 签名
+    /// ed25519 签名
     signature: Signature,
     /// 数据
     data: CrdsData,
@@ -32,14 +33,17 @@ pub struct CrdsValue {
 }
 
 impl Sanitize for CrdsValue {
+    /// 对签名和数据消毒
     fn sanitize(&self) -> Result<(), SanitizeError> {
         self.signature.sanitize()?;
         self.data.sanitize()
     }
 }
 
+/// 这里就是包装了一下 CrdsData
 impl Signable for CrdsValue {
     fn pubkey(&self) -> Pubkey {
+        /// 公钥放在原始的 CrdsData 里
         self.pubkey()
     }
 
@@ -63,10 +67,10 @@ impl Signable for CrdsValue {
 
 /// Type of the replicated value
 /// These are labels for values in a record that is associated with `Pubkey`
-/// 副本值的类型
+/// crds 表的键，给每个来源公钥和每种类型保留一个表项
 #[derive(PartialEq, Hash, Eq, Clone, Debug)]
 pub enum CrdsValueLabel {
-    /// 旧格式连接信息
+    /// 旧格式联系信息
     LegacyContactInfo(Pubkey),
     /// 投票信息，投票索引
     Vote(VoteIndex, Pubkey),
@@ -97,6 +101,7 @@ pub enum CrdsValueLabel {
 }
 
 impl CrdsValueLabel {
+    /// 取公钥
     pub fn pubkey(&self) -> Pubkey {
         match self {
             CrdsValueLabel::LegacyContactInfo(p) => *p,
@@ -118,6 +123,7 @@ impl CrdsValueLabel {
 }
 
 impl CrdsValue {
+    /// 新建 crds 值，不过这里只是包装 CrdsData，所以也是直接传进来
     pub fn new(data: CrdsData, keypair: &Keypair) -> Self {
         let bincode_serialized_data = bincode::serialize(&data).unwrap();
         let signature = keypair.sign_message(&bincode_serialized_data);
@@ -156,16 +162,19 @@ impl CrdsValue {
         }
     }
 
+    /// 取签名
     #[inline]
     pub(crate) fn signature(&self) -> &Signature {
         &self.signature
     }
 
+    /// 取数据
     #[inline]
     pub(crate) fn data(&self) -> &CrdsData {
         &self.data
     }
 
+    /// 取哈希
     #[inline]
     pub(crate) fn hash(&self) -> &Hash {
         &self.hash
@@ -174,6 +183,7 @@ impl CrdsValue {
     /// Totally unsecure unverifiable wallclock of the node that generated this message
     /// Latest wallclock is always picked.
     /// This is used to time out push messages.
+    /// 现实时间，用于消息过期
     pub(crate) fn wallclock(&self) -> u64 {
         self.data.wallclock()
     }
@@ -206,6 +216,7 @@ impl CrdsValue {
         }
     }
 
+    /// 取联系信息
     pub(crate) fn contact_info(&self) -> Option<&ContactInfo> {
         let CrdsData::ContactInfo(node) = &self.data else {
             return None;
@@ -213,6 +224,7 @@ impl CrdsValue {
         Some(node)
     }
 
+    /// 取纪元时隙
     pub(crate) fn epoch_slots(&self) -> Option<&EpochSlots> {
         let CrdsData::EpochSlots(_, epoch_slots) = &self.data else {
             return None;
@@ -221,6 +233,7 @@ impl CrdsValue {
     }
 
     /// Returns the bincode serialized size (in bytes) of the CrdsValue.
+    /// bincode 序列化后的长度
     pub fn bincode_serialized_size(&self) -> usize {
         bincode::serialized_size(&self)
             .map(usize::try_from)
@@ -230,6 +243,7 @@ impl CrdsValue {
 
     /// Returns true if, regardless of prunes, this crds-value
     /// should be pushed to the receiving node.
+    /// 是否强制推送，NodeInstance是强制推送的
     pub(crate) fn should_force_push(&self, peer: &Pubkey) -> bool {
         matches!(self.data, CrdsData::NodeInstance(_)) && &self.pubkey() == peer
     }
@@ -237,11 +251,13 @@ impl CrdsValue {
 
 // Manual implementation of Deserialize for CrdsValue in order to populate
 // CrdsValue.hash which is skipped in serialization.
+/// 手动反序列化，添加哈希，哈希因为可以计算，所以在序列化时跳过了
 impl<'de> Deserialize<'de> for CrdsValue {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
     {
+        /// 临时结构，没有哈希的 CrdsValue
         #[derive(Deserialize)]
         struct CrdsValue {
             signature: Signature,
@@ -249,6 +265,7 @@ impl<'de> Deserialize<'de> for CrdsValue {
         }
         let CrdsValue { signature, data } = CrdsValue::deserialize(deserializer)?;
         let bincode_serialized_data = bincode::serialize(&data).unwrap();
+        /// 添加哈希
         let hash = solana_sdk::hash::hashv(&[signature.as_ref(), &bincode_serialized_data]);
         Ok(Self {
             signature,

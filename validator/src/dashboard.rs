@@ -122,12 +122,12 @@ impl Dashboard {
 
             /// 获取并打印 联系方式信息
             if let Some(contact_info) = get_contact_info(&rpc_client, &identity) {
-                /// 大版本
+                /// 版本
                 println_name_value(
                     "Version:",
                     &contact_info.version.unwrap_or_else(|| "?".to_string()),
                 );
-                /// 小版本
+                /// 消息分片版本
                 if let Some(shred_version) = contact_info.shred_version {
                     println_name_value("Shred Version:", &shred_version.to_string());
                 }

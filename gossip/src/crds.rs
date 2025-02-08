@@ -90,8 +90,10 @@ use {
     },
 };
 
+/// 消息分片的划分次数
 const CRDS_SHARDS_BITS: u32 = 12;
 // Number of vote slots to track in an lru-cache for metrics.
+/// 要在lru缓存中跟踪的投票槽数。lru淘汰最久不被访问的数据
 const VOTE_SLOTS_METRICS_CAP: usize = 100;
 // Required number of leading zero bits for crds signature to get reported to influx
 // mean new push messages received per minute per node
@@ -99,6 +101,7 @@ const VOTE_SLOTS_METRICS_CAP: usize = 100;
 //      mainnet: ~280k
 // target: 1 signature reported per minute
 // log2(500k) = ~18.9.
+/// 向 influx 汇报 crds 签名所需的最小前导零个数
 const SIGNATURE_SAMPLE_LEADING_ZEROS: u32 = 19;
 
 /// CRDS（Cluster Radio Gossip Database System）
@@ -109,53 +112,76 @@ const SIGNATURE_SAMPLE_LEADING_ZEROS: u32 = 19;
 /// 网络健康状态：比如当前网络是否有分叉，或者节点是否存在延迟等。
 pub struct Crds {
     /// Stores the map of labels and values
-    /// 按插入序排序的键值表
-    /// 对crds的值是分种类存放在这个键值表里的
-    /// crds种类映射到值
+    /// crds种类和来源公钥作为键，映射到 crds 值
+    /// 也就是每个来源公钥，每种类型只保留一条 crds 值，不然就会被新的给更新覆盖
+    /// 是 crds 值的实际信息存储位置，剩下的其他字段只是存储在这个 table 里面的索引
     table: IndexMap<CrdsValueLabel, VersionedCrdsValue>,
     /// 当前插入位置的游标
     cursor: Cursor, // Next insert ordinal location.
-    /// crds 消息分片
+    /// 由 crds 构成的crds哈希前导分组列表为的是把 crds 值放进去以后按哈希的前导位进行聚合，
+    /// 后面可以按哈希前导位比特值快速取出符合的 crds 值 这里主要只记录它在table里的索引，而不是值
     shards: CrdsShards,
+    /// 节点联系信息在table中的索引
     nodes: IndexSet<usize>, // Indices of nodes' ContactInfo.
     // Indices of Votes keyed by insert order.
+    /// 投票crds消息在 table 中的索引，按插入顺序作为键
     votes: BTreeMap<u64 /*insert order*/, usize /*index*/>,
     // Indices of EpochSlots keyed by insert order.
+    /// 纪元时隙crds消息在 table 中的索引，按插入顺序作为键
     epoch_slots: BTreeMap<u64 /*insert order*/, usize /*index*/>,
     // Indices of DuplicateShred keyed by insert order.
+    /// 重复消息分片crds消息在 table 中的索引，按插入顺序作为键
     duplicate_shreds: BTreeMap<u64 /*insert order*/, usize /*index*/>,
     // Indices of all crds values associated with a node.
+    /// 和某个节点相关的所有crds值在table里的索引
     records: HashMap<Pubkey, IndexSet<usize>>,
     // Indices of all entries keyed by insert order.
+    /// crds值 插入顺序映射到 table 的索引位置
     entries: BTreeMap<u64 /*insert order*/, usize /*index*/>,
     // Hash of recently purged values.
+    /// 最近清理掉的值的哈希，也记录清理掉的时间，用于自动清除回收站
     purged: VecDeque<(Hash, u64 /*timestamp*/)>,
     // Mapping from nodes' pubkeys to their respective shred-version.
+    /// 节点到他们的消息分片版本的映射
     shred_versions: HashMap<Pubkey, u16>,
+    /// 统计信息
     stats: Mutex<CrdsStats>,
 }
 
+/// crds 错误
 #[derive(PartialEq, Eq, Debug)]
 pub enum CrdsError {
+    /// 重复发送，并记录了重复次数
     DuplicatePush(/*num dups:*/ u8),
+    /// 插入失败
     InsertFailed,
+    /// 质押量未知
     UnknownStakes,
 }
 
+/// 八卦出入站方向
 #[derive(Clone, Copy)]
 pub enum GossipRoute<'a> {
+    /// 本地消息
     LocalMessage,
+    /// 拉取请求
     PullRequest,
+    /// 拉取响应
     PullResponse,
+    /// 主动推送，包含来源信息
     PushMessage(/*from:*/ &'a Pubkey),
 }
 
+/// crds 计数数组
 type CrdsCountsArray = [usize; 14];
 
 /// crds数据统计
 pub(crate) struct CrdsDataStats {
+    /// 计数
     pub(crate) counts: CrdsCountsArray,
+    /// 失败次数
     pub(crate) fails: CrdsCountsArray,
+    /// 投票
     pub(crate) votes: LruCache<Slot, /*count:*/ usize>,
 }
 
@@ -212,7 +238,7 @@ impl Cursor {
 }
 
 impl VersionedCrdsValue {
-    /// 新建 crds 值
+    /// 新建版本化 crds 值，由 crds 值包装而来
     fn new(value: CrdsValue, cursor: Cursor, local_timestamp: u64, route: GossipRoute) -> Self {
         /// 根据方向不同，统计通过推送消息接收的次数
         let num_push_recv = match route {
@@ -232,6 +258,7 @@ impl VersionedCrdsValue {
 }
 
 impl Default for Crds {
+    /// 默认值
     fn default() -> Self {
         Crds {
             table: IndexMap::default(),
@@ -252,11 +279,14 @@ impl Default for Crds {
 
 // Returns true if the first value updates the 2nd one.
 // Both values should have the same key/label.
+/// 用于判断一个 CrdsValue 实例是否会更新另一个 VersionedCrdsValue 实例。不进行实际更新
 fn overrides(value: &CrdsValue, other: &VersionedCrdsValue) -> bool {
+    /// 标签不一样
     assert_eq!(value.label(), other.value.label(), "labels mismatch!");
     // Contact-infos and node instances are special cased so that if there are
     // two running instances of the same node, the more recent start is
     // propagated through gossip regardless of wallclocks.
+    /// 联系信息和节点实例是特殊的，所以如果某个节点有两个相同的运行实例，不管现实时间如何，最近开始的将被传播
     match value.data() {
         CrdsData::ContactInfo(value) => {
             if let CrdsData::ContactInfo(other) = other.value.data() {
@@ -280,6 +310,8 @@ fn overrides(value: &CrdsValue, other: &VersionedCrdsValue) -> bool {
         // Ties should be broken in a deterministic way across the cluster.
         // For backward compatibility this is done by comparing hash of
         // serialized values.
+        /// 如果两者的时间戳相同，则通过比较哈希值来决定覆盖关系。
+        /// 这种设计确保了在分布式系统中，节点能够根据时间戳和数据类型的优先级，正确地更新或保留信息。
         Ordering::Equal => other.value.hash() < value.hash(),
     }
 }
@@ -288,6 +320,9 @@ impl Crds {
     /// Returns true if the given value updates an existing one in the table.
     /// The value is outdated and fails to insert, if it already exists in the
     /// table with a more recent wallclock.
+    /// 判断是否要更新插入，不进行实际更新
+    /// 如果给定的值更新了表中的现有值，则返回true。
+    /// 如果该值已存在并且表中的现实时间更近，则该值已过期且插入失败。
     pub(crate) fn upserts(&self, value: &CrdsValue) -> bool {
         match self.table.get(&value.label()) {
             Some(other) => overrides(value, other),
@@ -295,7 +330,7 @@ impl Crds {
         }
     }
 
-    /// 插入 crds 表
+    /// 插入 crds 值
     pub fn insert(
         &mut self,
         value: CrdsValue,
@@ -312,40 +347,55 @@ impl Crds {
         let mut stats = self.stats.lock().unwrap();
         /// 表里找到这个种类
         match self.table.entry(label) {
-            /// 空槽，映射中没有对应的键
+            /// 空槽，映射中没有对应的键，键是类型加上来源公钥
             Entry::Vacant(entry) => {
                 /// 计入统计
                 stats.record_insert(&value, route);
-                /// 可插入键值对的索引位置
+                /// 获取插入以后的索引位置
                 let entry_index = entry.index();
+                /// 插入到 crds 哈希前导分组索引列表里
                 self.shards.insert(entry_index, &value);
+                /// 看类型，有四种类型单独额外记录了索引位置
                 match value.value.data() {
+                    /// 节点的联系信息，要记录节点和消息
                     CrdsData::ContactInfo(node) => {
                         self.nodes.insert(entry_index);
                         self.shred_versions.insert(pubkey, node.shred_version());
                     }
+                    /// 投票信息
                     CrdsData::Vote(_, _) => {
                         self.votes.insert(value.ordinal, entry_index);
                     }
+                    /// 纪元时隙
                     CrdsData::EpochSlots(_, _) => {
                         self.epoch_slots.insert(value.ordinal, entry_index);
                     }
+                    /// 重复的消息分片
                     CrdsData::DuplicateShred(_, _) => {
                         self.duplicate_shreds.insert(value.ordinal, entry_index);
                     }
                     _ => (),
                 };
+                /// 插入顺序到table索引映射
                 self.entries.insert(value.ordinal, entry_index);
+                /// 插入某个节点相关的table索引
                 self.records.entry(pubkey).or_default().insert(entry_index);
+                /// 推进游标到插入顺序后一个
                 self.cursor.consume(value.ordinal);
+                /// 插入值
                 entry.insert(value);
                 Ok(())
             }
+            /// 映射中有对应的键，这个键是类型加上来源公钥，并且可以更新，overrides
             Entry::Occupied(mut entry) if overrides(&value.value, entry.get()) => {
+                /// 统计
                 stats.record_insert(&value, route);
+                /// 获取索引
                 let entry_index = entry.index();
+                /// 更新crds哈希前导分组列表
                 self.shards.remove(entry_index, entry.get());
                 self.shards.insert(entry_index, &value);
+                /// 更新那四种索引位置，见上面
                 match value.value.data() {
                     CrdsData::ContactInfo(node) => {
                         self.shred_versions.insert(pubkey, node.shred_version());
@@ -367,18 +417,25 @@ impl Crds {
                     }
                     _ => (),
                 }
+                /// 更新插入顺序映射
                 self.entries.remove(&entry.get().ordinal);
                 self.entries.insert(value.ordinal, entry_index);
                 // As long as the pubkey does not change, self.records
                 // does not need to be updated.
                 debug_assert_eq!(entry.get().value.pubkey(), pubkey);
+                /// 推进游标
                 self.cursor.consume(value.ordinal);
+                /// 记录被替换掉的旧值
                 self.purged.push_back((*entry.get().value.hash(), now));
+                /// 覆盖值
                 entry.insert(value);
                 Ok(())
             }
+            /// 映射中有对应的键，这个键是类型加上来源公钥，并且不可更新，overrides false，消息比较旧
             Entry::Occupied(mut entry) => {
+                /// 记录失败统计
                 stats.record_fail(&value, route);
+                /// 打印日志
                 trace!(
                     "INSERT FAILED data: {:?} new.wallclock: {}",
                     value.value.label(),
@@ -386,9 +443,11 @@ impl Crds {
                 );
                 // Identify if the message is outdated (as opposed to
                 // duplicate) by comparing value hashes.
+                /// 哈希不一样，那就是过期了
                 if entry.get().value.hash() != value.value.hash() {
                     self.purged.push_back((*value.value.hash(), now));
                     Err(CrdsError::InsertFailed)
+                /// 哈希一样，就是重复了，记录重复消息统计
                 } else if matches!(route, GossipRoute::PushMessage(_)) {
                     let entry = entry.get_mut();
                     if entry.num_push_recv == Some(0) {
@@ -399,6 +458,7 @@ impl Crds {
                     let num_push_dups = entry.num_push_recv.unwrap_or_default();
                     entry.num_push_recv = Some(num_push_dups.saturating_add(1));
                     Err(CrdsError::DuplicatePush(num_push_dups))
+                /// 不然就是未知错误了
                 } else {
                     Err(CrdsError::InsertFailed)
                 }
@@ -406,6 +466,7 @@ impl Crds {
         }
     }
 
+    /// 从 table 中根据键取项
     pub fn get<'a, 'b, V>(&'a self, key: V::Key) -> Option<V>
     where
         V: CrdsEntry<'a, 'b>,
@@ -413,16 +474,19 @@ impl Crds {
         V::get_entry(&self.table, key)
     }
 
+    /// 获取某个节点的消息分片版本
     pub(crate) fn get_shred_version(&self, pubkey: &Pubkey) -> Option<u16> {
         self.shred_versions.get(pubkey).copied()
     }
 
     /// Returns all entries which are ContactInfo.
+    /// 获取所有记录中节点的联系方式 crds 值
     pub(crate) fn get_nodes(&self) -> impl Iterator<Item = &VersionedCrdsValue> {
         self.nodes.iter().map(move |i| self.table.index(*i))
     }
 
     /// Returns ContactInfo of all known nodes.
+    /// 获取所有记录中节点的联系方式
     pub(crate) fn get_nodes_contact_info(&self) -> impl Iterator<Item = &ContactInfo> {
         self.get_nodes().map(|v| match v.value.data() {
             CrdsData::ContactInfo(info) => info,
@@ -432,6 +496,7 @@ impl Crds {
 
     /// Returns all vote entries inserted since the given cursor.
     /// Updates the cursor as the votes are consumed.
+    /// 传入一个可变游标，返回自给定游标以来插入的所有投票crds。返回的迭代器在迭代的同时会推进游标
     pub(crate) fn get_votes<'a>(
         &'a self,
         cursor: &'a mut Cursor,
@@ -445,6 +510,7 @@ impl Crds {
 
     /// Returns epoch-slots inserted since the given cursor.
     /// Updates the cursor as the values are consumed.
+    /// 传入一个可变游标，返回自给定游标以来插入的所有纪元时隙crds。返回的迭代器在迭代的同时会推进游标
     pub(crate) fn get_epoch_slots<'a>(
         &'a self,
         cursor: &'a mut Cursor,
@@ -458,6 +524,7 @@ impl Crds {
 
     /// Returns duplicate-shreds inserted since the given cursor.
     /// Updates the cursor as the values are consumed.
+    /// 传入一个可变游标，返回自给定游标以来插入的所有重复消息分片crds。返回的迭代器在迭代的同时会推进游标
     pub(crate) fn get_duplicate_shreds<'a>(
         &'a self,
         cursor: &'a mut Cursor,
@@ -472,7 +539,7 @@ impl Crds {
     }
 
     /// Returns all entries inserted since the given cursor.
-    /// 获取游标后的项个数
+    /// 传入一个可变游标，返回自给定游标以来插入的所有消息分片crds。返回的迭代器在迭代的同时会推进游标
     pub(crate) fn get_entries<'a>(
         &'a self,
         cursor: &'a mut Cursor,
@@ -485,6 +552,7 @@ impl Crds {
     }
 
     /// Returns all records associated with a pubkey.
+    /// 返回和某个公钥相关的所有 crds 值
     pub(crate) fn get_records(&self, pubkey: &Pubkey) -> impl Iterator<Item = &VersionedCrdsValue> {
         self.records
             .get(pubkey)
@@ -494,41 +562,50 @@ impl Crds {
     }
 
     /// Returns number of known contact-infos (network size).
+    /// 获取记录了多少个节点联系方式
     pub(crate) fn num_nodes(&self) -> usize {
         self.nodes.len()
     }
 
     /// Returns number of unique pubkeys.
+    /// 获取记录了多少个来源公钥
     pub(crate) fn num_pubkeys(&self) -> usize {
         self.records.len()
     }
 
+    /// 取 crds 表的长度
     pub fn len(&self) -> usize {
         self.table.len()
     }
 
+    /// crds 表是否为空
     pub fn is_empty(&self) -> bool {
         self.table.is_empty()
     }
 
+    /// 所有 crds 值
     #[cfg(test)]
     pub(crate) fn values(&self) -> impl Iterator<Item = &VersionedCrdsValue> {
         self.table.values()
     }
 
+    /// crds值的并行迭代器
     pub(crate) fn par_values(&self) -> ParValues<'_, CrdsValueLabel, VersionedCrdsValue> {
         self.table.par_values()
     }
 
+    /// 最近清理掉的crds数
     pub(crate) fn num_purged(&self) -> usize {
         self.purged.len()
     }
 
+    /// 最近清理掉的crds的哈希
     pub(crate) fn purged(&self) -> impl IndexedParallelIterator<Item = Hash> + '_ {
         self.purged.par_iter().map(|(hash, _)| *hash)
     }
 
     /// Drops purged value hashes with timestamp less than the given one.
+    /// 清掉清理掉的crds值的记录，清理回收站
     pub(crate) fn trim_purged(&mut self, timestamp: u64) {
         let count = self
             .purged
@@ -541,6 +618,7 @@ impl Crds {
     /// Returns all crds values which the first 'mask_bits'
     /// of their hash value is equal to 'mask'.
     /// Excludes deprecated values.
+    /// 通过哈希前导比特匹配来取crds值，这就是crds哈希前导分组列表的用途
     pub(crate) fn filter_bitmask(
         &self,
         mask: u64,
@@ -553,6 +631,7 @@ impl Crds {
     }
 
     /// Update the timestamp's of all the labels that are associated with Pubkey
+    /// 更新与Pubkey相关的所有标签的时间戳
     pub(crate) fn update_record_timestamp(&mut self, pubkey: &Pubkey, now: u64) {
         // It suffices to only overwrite the origin's timestamp since that is
         // used when purging old values. If the origin does not exist in the
@@ -574,6 +653,7 @@ impl Crds {
 
     /// Find all the keys that are older or equal to the timeout.
     /// * timeouts - Pubkey specific timeouts with Pubkey::default() as the default timeout.
+    /// 寻找时间久了的项
     pub fn find_old_labels(
         &self,
         thread_pool: &ThreadPool,
@@ -582,10 +662,12 @@ impl Crds {
     ) -> Vec<CrdsValueLabel> {
         // Given an index of all crd values associated with a pubkey,
         // returns crds labels of old values to be evicted.
+        /// 传入与某个节点相关的所有 crds 项的索引，返回其中的旧的
         let evict = |pubkey, index: &IndexSet<usize>| {
             let timeout = timeouts[pubkey];
             // If the origin's contact-info hasn't expired yet then preserve
             // all associated values.
+            /// 联系信息还没过期，那就全部保留
             let origin = CrdsValueLabel::ContactInfo(*pubkey);
             if let Some(origin) = self.table.get(&origin) {
                 if origin
@@ -599,6 +681,7 @@ impl Crds {
                 }
             }
             // Otherwise check each value's timestamp individually.
+            /// 否则看各个值是否过期
             index
                 .into_iter()
                 .map(|&ix| self.table.get_index(ix).unwrap())
@@ -614,6 +697,7 @@ impl Crds {
                 .cloned()
                 .collect::<Vec<_>>()
         };
+        /// 在线程池中进行并行迭代
         thread_pool.install(|| {
             self.records
                 .par_iter()
@@ -622,12 +706,17 @@ impl Crds {
         })
     }
 
+    /// 删除项
     pub fn remove(&mut self, key: &CrdsValueLabel, now: u64) {
+        /// 从 table 里移出项
         let Some((index, _ /*label*/, value)) = self.table.swap_remove_full(key) else {
             return;
         };
+        /// 记录清理
         self.purged.push_back((*value.value.hash(), now));
+        /// 从 crds 哈希前导分组表移出
         self.shards.remove(index, &value);
+        /// 移出其他种类里的
         match value.value.data() {
             CrdsData::ContactInfo(_) => {
                 self.nodes.swap_remove(&index);
@@ -659,6 +748,7 @@ impl Crds {
         // Otherwise, the previously last element in the table is now moved to
         // the 'index' position; and so shards and nodes need to be updated
         // accordingly.
+        /// 由于 indexmap 移出元素，是把之前最后一项放在被移除的元素的位置，所以要修复索引
         let size = self.table.len();
         if index < size {
             let value = self.table.index(index);
@@ -692,6 +782,7 @@ impl Crds {
     /// given capacity (plus some margin).
     /// Allows skipping unnecessary calls to trim without obtaining a write
     /// lock on gossip.
+    /// 记录公钥数是否超过容量
     pub(crate) fn should_trim(&self, cap: usize) -> bool {
         // Allow 10% overshoot so that the computation cost is amortized down.
         10 * self.records.len() > 11 * cap
@@ -699,6 +790,7 @@ impl Crds {
 
     /// Trims the table by dropping all values associated with the pubkeys with
     /// the lowest stake, so that the number of unique pubkeys are bounded.
+    /// 通过删除最低质押的pubkey相关的所有值来修剪表，以便限定pubkey的数量。
     pub(crate) fn trim(
         &mut self,
         cap: usize, // Capacity hint for number of unique pubkeys.
@@ -717,6 +809,7 @@ impl Crds {
     }
 
     // Drops 'size' many pubkeys with the lowest stake.
+    /// 按照最低质押来修剪表
     fn drop(
         &mut self,
         size: usize,
@@ -733,10 +826,12 @@ impl Crds {
             .map(|k| (stakes.get(k).copied().unwrap_or_default(), *k))
             .collect();
         if size < keys.len() {
+            /// 排序，但是只是保证比size大的在后面，这样快
             keys.select_nth_unstable(size);
         }
         let keys: Vec<_> = keys
             .into_iter()
+            /// 只拿小的，这些需要消除
             .take(size)
             .map(|(_, k)| k)
             .filter(|k| !keep.contains(k))
@@ -744,11 +839,13 @@ impl Crds {
             .map(|k| self.table.get_index(*k).unwrap().0.clone())
             .collect();
         for key in &keys {
+            /// 删除项
             self.remove(key, now);
         }
         Ok(keys.len())
     }
 
+    /// 取走当前积累的统计信息
     pub(crate) fn take_stats(&self) -> CrdsStats {
         std::mem::take(&mut self.stats.lock().unwrap())
     }
@@ -765,6 +862,7 @@ impl Default for CrdsDataStats {
 }
 
 impl CrdsDataStats {
+    /// 记录 crds 表插入统计
     fn record_insert(&mut self, entry: &VersionedCrdsValue, route: GossipRoute) {
         self.counts[Self::ordinal(entry)] += 1;
         if let CrdsData::Vote(_, vote) = entry.value.data() {
@@ -800,6 +898,7 @@ impl CrdsDataStats {
         }
     }
 
+    /// 记录错误统计
     fn record_fail(&mut self, entry: &VersionedCrdsValue) {
         self.fails[Self::ordinal(entry)] += 1;
     }
@@ -836,6 +935,7 @@ impl CrdsStats {
         }
     }
 
+    /// 记录错误
     fn record_fail(&mut self, entry: &VersionedCrdsValue, route: GossipRoute) {
         match route {
             GossipRoute::LocalMessage => (),

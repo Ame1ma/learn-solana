@@ -21,19 +21,26 @@ use {
     std::{cmp::Ordering, collections::BTreeSet},
 };
 
+/// 最大现实时间
 pub(crate) const MAX_WALLCLOCK: u64 = 1_000_000_000_000_000;
+/// 最大时隙
 pub(crate) const MAX_SLOT: u64 = 1_000_000_000_000_000;
 /// Maximum number of hashes in AccountsHashes a node publishes
 /// such that the serialized size of the push/pull message stays below
 /// PACKET_DATA_SIZE.
+/// 节点发布的AccountsHashes中的最大哈希数，使得推/拉消息的序列化大小保持在PACKET_DATA_SIZE以下。
 const MAX_ACCOUNTS_HASHES: usize = 16;
 
+/// 投票索引
 pub(crate) type VoteIndex = u8;
 // TODO: Remove this in favor of vote_state::MAX_LOCKOUT_HISTORY once
 // the fleet is updated to the new ClusterInfo::push_vote code.
+/// 最大投票数
 const MAX_VOTES: VoteIndex = 32;
 
+/// 纪元时隙索引
 pub(crate) type EpochSlotsIndex = u8;
+/// 最大纪元时隙数
 pub(crate) const MAX_EPOCH_SLOTS: EpochSlotsIndex = 255;
 
 /// CrdsData that defines the different types of items CrdsValues can hold
@@ -41,6 +48,7 @@ pub(crate) const MAX_EPOCH_SLOTS: EpochSlotsIndex = 255;
 /// * LowestSlot index is deprecated
 /// crds 数据，和标签里的类型是对应的
 /// 每种都有 from：来源，wallclock：值创建时的现实本地时间
+/// 这才是实际的 crds 值，不带签名相关的东西， CrdsValue 比这个额外带了签名
 #[allow(clippy::large_enum_variant)]
 #[cfg_attr(feature = "frozen-abi", derive(AbiExample, AbiEnumVisitor))]
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
@@ -82,24 +90,31 @@ pub enum CrdsData {
 }
 
 impl Sanitize for CrdsData {
+    /// 对传入数据消毒，防止攻击
     fn sanitize(&self) -> Result<(), SanitizeError> {
         match self {
             CrdsData::LegacyContactInfo(val) => val.sanitize(),
             CrdsData::Vote(ix, val) => {
+                /// 投票索引不能超限
                 if *ix >= MAX_VOTES {
                     return Err(SanitizeError::ValueOutOfBounds);
                 }
+                /// 现实时间消毒，交易格式消毒
                 val.sanitize()
             }
             CrdsData::LowestSlot(ix, val) => {
+                /// 弃用
                 if *ix as usize >= 1 {
                     return Err(SanitizeError::ValueOutOfBounds);
                 }
                 val.sanitize()
             }
+            /// 弃用
             CrdsData::LegacySnapshotHashes(val) => val.sanitize(),
+            /// 弃用
             CrdsData::AccountsHashes(val) => val.sanitize(),
             CrdsData::EpochSlots(ix, val) => {
+                /// 纪元时隙不能太大
                 if *ix as usize >= MAX_EPOCH_SLOTS as usize {
                     return Err(SanitizeError::ValueOutOfBounds);
                 }
@@ -365,8 +380,11 @@ pub struct Vote {
 
 impl Sanitize for Vote {
     fn sanitize(&self) -> Result<(), SanitizeError> {
+        /// 现实时间不能太大
         sanitize_wallclock(self.wallclock)?;
+        /// 公钥没实现消毒
         self.from.sanitize()?;
+        /// 签名数需要正确，账户索引范围需正确
         self.transaction.sanitize()
     }
 }

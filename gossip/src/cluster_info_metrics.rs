@@ -186,11 +186,13 @@ pub struct GossipStats {
     pub(crate) window_request_loopback: Counter,
 }
 
+/// 发送统计信息
 pub(crate) fn submit_gossip_stats(
     stats: &GossipStats,
     gossip: &CrdsGossip,
     stakes: &HashMap<Pubkey, u64>,
 ) {
+    /// 从 crds 中获取
     let (crds_stats, table_size, num_nodes, num_pubkeys, purged_values_size, failed_inserts_size) = {
         let gossip_crds = gossip.crds.read().unwrap();
         (

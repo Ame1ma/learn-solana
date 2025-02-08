@@ -10,8 +10,9 @@ use {
     solana_sdk::{clock::Slot, pubkey::Pubkey},
 };
 
+/// 每项最多的时隙数
 pub const MAX_SLOTS_PER_ENTRY: usize = 2048 * 8;
-/// 非压缩时隙
+/// 非压缩时隙列表
 #[cfg_attr(feature = "frozen-abi", derive(AbiExample))]
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct Uncompressed {
@@ -19,22 +20,27 @@ pub struct Uncompressed {
     pub first_slot: Slot,
     /// 时隙个数
     pub num: usize,
-    /// 时隙
+    /// 时隙列表，紧密的放在里面，每8个字节是一个时隙
     pub slots: BitVec<u8>,
 }
 
 impl Sanitize for Uncompressed {
+    /// 时隙列表格式需正确
     fn sanitize(&self) -> std::result::Result<(), SanitizeError> {
+        // 第一个时隙不能太大
         if self.first_slot >= MAX_SLOT {
             return Err(SanitizeError::ValueOutOfBounds);
         }
+        // 时隙个数不能太多
         if self.num >= MAX_SLOTS_PER_ENTRY {
             return Err(SanitizeError::ValueOutOfBounds);
         }
+        // 时隙列表需要被8整除
         if self.slots.len() % 8 != 0 {
             // Uncompressed::new() ensures the length is always a multiple of 8
             return Err(SanitizeError::ValueOutOfBounds);
         }
+        // 没有冗余容量
         if self.slots.len() != self.slots.capacity() {
             // A BitVec<u8> with a length that's a multiple of 8 will always have len() equal to
             // capacity(), assuming no bit manipulation
@@ -54,16 +60,18 @@ pub struct Flate2 {
     pub first_slot: Slot,
     /// 数量
     pub num: usize,
-    /// 压缩后数据
+    /// 压缩后时隙列表
     #[serde(with = "serde_bytes")]
     pub compressed: Vec<u8>,
 }
 
 impl Sanitize for Flate2 {
     fn sanitize(&self) -> std::result::Result<(), SanitizeError> {
+        // 第一个时隙不能太大
         if self.first_slot >= MAX_SLOT {
             return Err(SanitizeError::ValueOutOfBounds);
         }
+        // 时隙个数不能太多
         if self.num >= MAX_SLOTS_PER_ENTRY {
             return Err(SanitizeError::ValueOutOfBounds);
         }
@@ -71,6 +79,7 @@ impl Sanitize for Flate2 {
     }
 }
 
+/// 纪元时隙错误
 #[derive(Debug, PartialEq, Eq)]
 pub enum Error {
     CompressError,
@@ -91,6 +100,7 @@ impl std::convert::From<flate2::DecompressError> for Error {
 }
 
 impl Flate2 {
+    /// 压缩
     fn deflate(mut unc: Uncompressed) -> Result<Self> {
         let mut compressed = Vec::with_capacity(unc.slots.block_capacity());
         let mut compressor = Compress::new(Compression::best(), false);
@@ -107,6 +117,7 @@ impl Flate2 {
         let _ = rv.inflate()?;
         Ok(rv)
     }
+    /// 解压
     pub fn inflate(&self) -> Result<Uncompressed> {
         //add some head room for the decompressor which might spill more bits
         let mut uncompressed = Vec::with_capacity(32 + (self.num + 4) / 8);
@@ -121,6 +132,7 @@ impl Flate2 {
 }
 
 impl Uncompressed {
+    /// 新建时隙列表
     pub fn new(max_size: usize) -> Self {
         Self {
             num: 0,
@@ -128,13 +140,16 @@ impl Uncompressed {
             slots: BitVec::new_fill(false, 8 * max_size as u64),
         }
     }
+    /// 取出时隙列表
     pub fn to_slots(&self, min_slot: Slot) -> Vec<Slot> {
         let mut rv = vec![];
         let start = if min_slot < self.first_slot {
             0
         } else {
+            /// 不从第一个开始
             (min_slot - self.first_slot) as usize
         };
+        /// 从 slots 里面依次取时隙
         for i in start..self.num {
             if i >= self.slots.len() as usize {
                 break;
@@ -145,17 +160,22 @@ impl Uncompressed {
         }
         rv
     }
+    /// 添加时隙，返回添加了多少个
     pub fn add(&mut self, slots: &[Slot]) -> usize {
         for (i, s) in slots.iter().enumerate() {
+            /// 设置第一个时隙
             if self.num == 0 {
                 self.first_slot = *s;
             }
+            /// 达到了每项最多的时隙数，结束
             if self.num >= MAX_SLOTS_PER_ENTRY {
                 return i;
             }
+            /// 太早了
             if *s < self.first_slot {
                 return i;
             }
+            /// 超长了
             if *s - self.first_slot >= self.slots.len() {
                 return i;
             }
@@ -177,6 +197,7 @@ pub enum CompressedSlots {
 }
 
 impl Sanitize for CompressedSlots {
+    /// 时隙列表格式需正确
     fn sanitize(&self) -> std::result::Result<(), SanitizeError> {
         match self {
             CompressedSlots::Uncompressed(a) => a.sanitize(),
@@ -191,11 +212,14 @@ impl Default for CompressedSlots {
     }
 }
 
+/// 都是分发到各自的类型，压缩和不压缩
 impl CompressedSlots {
+    /// 新建
     pub(crate) fn new(max_size: usize) -> Self {
         CompressedSlots::Uncompressed(Uncompressed::new(max_size))
     }
 
+    /// 第一个时隙
     pub fn first_slot(&self) -> Slot {
         match self {
             CompressedSlots::Uncompressed(a) => a.first_slot,
@@ -203,6 +227,7 @@ impl CompressedSlots {
         }
     }
 
+    /// 时隙数
     pub fn num_slots(&self) -> usize {
         match self {
             CompressedSlots::Uncompressed(a) => a.num,
@@ -210,12 +235,14 @@ impl CompressedSlots {
         }
     }
 
+    /// 添加
     pub fn add(&mut self, slots: &[Slot]) -> usize {
         match self {
             CompressedSlots::Uncompressed(vals) => vals.add(slots),
             CompressedSlots::Flate2(_) => 0,
         }
     }
+    /// 获取时隙列表
     pub fn to_slots(&self, min_slot: Slot) -> Result<Vec<Slot>> {
         match self {
             CompressedSlots::Uncompressed(vals) => Ok(vals.to_slots(min_slot)),
@@ -225,6 +252,7 @@ impl CompressedSlots {
             }
         }
     }
+    /// 压缩，真空袋抽气，刚好从Uncompressed转换为Flate2
     pub fn deflate(&mut self) -> Result<()> {
         match self {
             CompressedSlots::Uncompressed(vals) => {
@@ -244,6 +272,7 @@ impl CompressedSlots {
 pub struct EpochSlots {
     /// 来源
     pub from: Pubkey,
+    /// 时隙列表
     pub slots: Vec<CompressedSlots>,
     /// 创建时的本地现实时间
     pub wallclock: u64,
@@ -251,10 +280,12 @@ pub struct EpochSlots {
 
 impl Sanitize for EpochSlots {
     fn sanitize(&self) -> std::result::Result<(), SanitizeError> {
+        /// 现实时间不能太大
         if self.wallclock >= MAX_WALLCLOCK {
             return Err(SanitizeError::ValueOutOfBounds);
         }
         self.from.sanitize()?;
+        /// 时隙消毒
         self.slots.sanitize()
     }
 }
@@ -277,6 +308,7 @@ impl fmt::Debug for EpochSlots {
 }
 
 impl EpochSlots {
+    /// 新建纪元时隙
     pub fn new(from: Pubkey, now: u64) -> Self {
         Self {
             from,
@@ -284,6 +316,7 @@ impl EpochSlots {
             slots: vec![],
         }
     }
+    /// 填满
     pub fn fill(&mut self, slots: &[Slot], now: u64) -> usize {
         let mut num = 0;
         self.wallclock = std::cmp::max(now, self.wallclock + 1);
@@ -304,6 +337,7 @@ impl EpochSlots {
         }
         num
     }
+    /// 增加时隙
     pub fn add(&mut self, slots: &[Slot]) -> usize {
         let mut num = 0;
         for s in &mut self.slots {
@@ -314,22 +348,26 @@ impl EpochSlots {
         }
         num
     }
+    /// 压缩
     pub fn deflate(&mut self) -> Result<()> {
         for s in self.slots.iter_mut() {
             s.deflate()?;
         }
         Ok(())
     }
+    /// 最大压缩后时隙大小
     pub fn max_compressed_slot_size(&self) -> isize {
         let len_header = serialized_size(self).unwrap();
         let len_slot = serialized_size(&CompressedSlots::default()).unwrap();
         MAX_CRDS_OBJECT_SIZE as isize - (len_header + len_slot) as isize
     }
 
+    /// 第一个时隙
     pub fn first_slot(&self) -> Option<Slot> {
         self.slots.iter().map(|s| s.first_slot()).min()
     }
 
+    /// 获取时隙列表
     pub fn to_slots(&self, min_slot: Slot) -> Vec<Slot> {
         self.slots
             .iter()

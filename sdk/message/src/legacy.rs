@@ -214,8 +214,11 @@ pub struct Message {
 }
 
 impl Sanitize for Message {
+    /// 对账户索引范围进行消毒，账户是用了一个共享账户列表：
+    /// [[可写需签(首个是payer)], [只读需签], [可写非签], [只读非签]]，其他字段都是用它的索引
     fn sanitize(&self) -> std::result::Result<(), SanitizeError> {
         // signing area and read-only non-signing area should not overlap
+        // 签名区和只读非签区不能重叠
         if self.header.num_required_signatures as usize
             + self.header.num_readonly_unsigned_accounts as usize
             > self.account_keys.len()
@@ -224,24 +227,29 @@ impl Sanitize for Message {
         }
 
         // there should be at least 1 RW fee-payer account.
+        // 至少需要一个可写需签，用来支付交易费
         if self.header.num_readonly_signed_accounts >= self.header.num_required_signatures {
             return Err(SanitizeError::IndexOutOfBounds);
         }
 
         for ci in &self.instructions {
+            // 程序账户的索引超出了共享账户列表长度
             if ci.program_id_index as usize >= self.account_keys.len() {
                 return Err(SanitizeError::IndexOutOfBounds);
             }
             // A program cannot be a payer.
+            // 放在第一位的是交易费支付者，程序不能放第一位
             if ci.program_id_index == 0 {
                 return Err(SanitizeError::IndexOutOfBounds);
             }
+            // 指令用到的数据账户超出了共享账户列表长度
             for ai in &ci.accounts {
                 if *ai as usize >= self.account_keys.len() {
                     return Err(SanitizeError::IndexOutOfBounds);
                 }
             }
         }
+        // 剩下这仨都没实现，直接返回
         self.account_keys.sanitize()?;
         self.recent_blockhash.sanitize()?;
         self.instructions.sanitize()?;

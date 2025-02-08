@@ -11,6 +11,8 @@ pub use {
     solana_signature::{ParseSignatureError, Signature, SIGNATURE_BYTES},
 };
 
+/// 可签名与验证的数据，公钥和签名也要放在结构体中存着，调用验证时并不需要再传签名进去，
+/// 所以可能需要把原始的结构包装在新的结构里，然后再给包装结构实现这个trait
 pub trait Signable {
     fn sign(&mut self, keypair: &Keypair) {
         let signature = keypair.sign_message(self.signable_data().borrow());

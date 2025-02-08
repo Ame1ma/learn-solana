@@ -98,7 +98,13 @@ pub const MESSAGE_HEADER_LENGTH: usize = 3;
 /// access the same read-write accounts are processed sequentially.
 ///
 /// [PoH]: https://docs.solanalabs.com/consensus/synchronization
-/// 消息头
+/// 消息头，记录各种不同权限的账户在有序的共享账户列表里的数量
+/// 共享账户列表是按如下顺序排序的
+/// [[可写需签], [只读需签], [可写非签], [只读非签]]
+/// 要划分它们需要三个隔板，所以消息头只要记录三种的数量，就可以完成划分：
+/// - 需签账户数， [[可写需签], [只读需签], ｜ [可写非签], [只读非签]]
+/// - 只读需签账户数，[[可写需签], ｜ [只读需签], [可写非签], [只读非签]]
+/// - 只读非签账户数，[[可写需签], [只读需签], [可写非签], ｜ [只读非签]]
 #[cfg_attr(feature = "frozen-abi", derive(AbiExample))]
 #[cfg_attr(
     feature = "serde",
@@ -111,17 +117,17 @@ pub struct MessageHeader {
     /// valid. The signers of those signatures must match the first
     /// `num_required_signatures` of [`Message::account_keys`].
     // NOTE: Serialization-related changes must be paired with the direct read at sigverify.
-    /// 需要的签名数
+    /// 需签账户数， [[可写需签], [只读需签], ｜ [可写非签], [只读非签]]
     pub num_required_signatures: u8,
 
     /// The last `num_readonly_signed_accounts` of the signed keys are read-only
     /// accounts.
-    /// 只读签名账户数
+    /// 只读需签账户数，[[可写需签], ｜ [只读需签], [可写非签], [只读非签]]
     pub num_readonly_signed_accounts: u8,
 
     /// The last `num_readonly_unsigned_accounts` of the unsigned keys are
     /// read-only accounts.
-    /// 只读非签名账户数
+    /// 只读非签账户数，[[可写需签], [只读需签], [可写非签], ｜ [只读非签]]
     pub num_readonly_unsigned_accounts: u8,
 }
 

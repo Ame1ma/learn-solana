@@ -59,6 +59,7 @@ pub(crate) struct LegacyContactInfo {
 }
 
 impl Sanitize for LegacyContactInfo {
+    /// 现实时间不能太大
     fn sanitize(&self) -> std::result::Result<(), SanitizeError> {
         if self.wallclock >= MAX_WALLCLOCK {
             return Err(SanitizeError::ValueOutOfBounds);
