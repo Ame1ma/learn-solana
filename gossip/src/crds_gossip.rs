@@ -82,6 +82,7 @@ impl CrdsGossip {
     /// Process a push message to the network.
     ///
     /// Returns unique origins' pubkeys of upserted values.
+    /// 处理接收到的推送消息
     pub fn process_push_message(
         &self,
         messages: Vec<(/*from:*/ Pubkey, Vec<CrdsValue>)>,
@@ -91,6 +92,7 @@ impl CrdsGossip {
     }
 
     /// Remove redundant paths in the network.
+    /// 清理接收缓存
     pub fn prune_received_cache<I>(
         &self,
         self_pubkey: &Pubkey,
@@ -103,6 +105,7 @@ impl CrdsGossip {
         self.push.prune_received_cache(self_pubkey, origins, stakes)
     }
 
+    /// 生成推送消息
     pub fn new_push_messages(
         &self,
         pubkey: &Pubkey, // This node.
@@ -116,6 +119,7 @@ impl CrdsGossip {
         self.push.new_push_messages(pubkey, &self.crds, now, stakes)
     }
 
+    /// 处理重复消息分片
     pub(crate) fn push_duplicate_shred<F>(
         &self,
         keypair: &Keypair,
@@ -129,8 +133,10 @@ impl CrdsGossip {
     where
         F: FnOnce(Slot) -> Option<Pubkey>,
     {
+        // 获取节点公钥
         let pubkey = keypair.pubkey();
         // Skip if there are already records of duplicate shreds for this slot.
+        // 如果已经有重复的消息分片，则跳过
         let shred_slot = shred.slot();
         let mut crds = self.crds.write().unwrap();
         if crds
@@ -343,6 +349,9 @@ impl CrdsGossip {
 }
 
 // Returns active and valid cluster nodes to gossip with.
+/// 获取活跃和有效的八卦节点
+/// 传入随机数生成器，当前时间，当前节点公钥，分片版本验证函数，crds表，八卦节点允许列表，质押量，节点地址空间
+/// 返回活跃和有效的八卦节点列表
 pub(crate) fn get_gossip_nodes<R: Rng>(
     rng: &mut R,
     now: u64,
@@ -357,30 +366,44 @@ pub(crate) fn get_gossip_nodes<R: Rng>(
     socket_addr_space: &SocketAddrSpace,
 ) -> Vec<ContactInfo> {
     // Exclude nodes which have not been active for this long.
+    // 排除长时间未活跃的节点，超过这个时间就认为节点不活跃
     const ACTIVE_TIMEOUT: Duration = Duration::from_secs(60);
+    // 计算当前时间减去活跃超时时间，得到活跃截止时间
     let active_cutoff = now.saturating_sub(ACTIVE_TIMEOUT.as_millis() as u64);
+    // 读取crds表
     let crds = crds.read().unwrap();
+    // 获取所有节点
     crds.get_nodes()
         .filter_map(|value| {
+            // 获取节点信息
             let node = value.value.contact_info().unwrap();
             // Exclude nodes which have not been active recently.
+            // 排除长时间未更新信息的节点，超过这个时间就认为节点不活跃
             if value.local_timestamp < active_cutoff {
                 // In order to mitigate eclipse attack, for staked nodes
                 // continue retrying periodically.
+                // 为了防止 eclipse 攻击，对于质押节点，继续定期重试。
+                // 获取节点质押量
                 let stake = stakes.get(node.pubkey()).copied().unwrap_or_default();
+                // 如果质押量为0，或者随机数生成器生成1/16的概率为false，则认为节点不活跃
                 if stake == 0u64 || !rng.gen_ratio(1, 16) {
                     return None;
                 }
             }
             Some(node)
         })
+        // 排除当前节点，并且分片版本匹配，并且节点地址有效，并且节点在八卦节点允许列表中
         .filter(|node| {
+            // 排除当前节点
             node.pubkey() != pubkey
+                // 分片版本匹配
                 && verify_shred_version(node.shred_version())
+                // 节点地址有效
                 && node
                     .gossip()
                     .map(|addr| socket_addr_space.check(&addr))
                     .unwrap_or_default()
+                // 节点在八卦节点允许列表中
                 && match gossip_validators {
                     Some(nodes) => nodes.contains(&node.pubkey()),
                     None => true,
@@ -391,6 +414,7 @@ pub(crate) fn get_gossip_nodes<R: Rng>(
 }
 
 // Dedups gossip addresses, keeping only the one with the highest stake.
+/// 去重八卦地址，nodes 记录中可能会有重复的节点，这里将每个节点只保留质押量最高的一条记录
 pub(crate) fn dedup_gossip_addresses(
     nodes: impl IntoIterator<Item = ContactInfo>,
     stakes: &HashMap<Pubkey, u64>,
@@ -398,9 +422,13 @@ pub(crate) fn dedup_gossip_addresses(
     nodes
         .into_iter()
         .filter_map(|node| Some((node.gossip().ok()?, node)))
+        // 同一个节点可能会有多个记录，先按节点地址分组
         .into_grouping_map()
+        // 再取每个组中质押量最高的
         .aggregate(|acc, _node_gossip, node| {
+            // 获取节点质押量
             let stake = stakes.get(node.pubkey()).copied().unwrap_or_default();
+            // 如果acc存在，并且acc的质押量大于等于当前节点质押量，则返回acc，否则返回当前节点
             match acc {
                 Some((ref s, _)) if s >= &stake => acc,
                 Some(_) | None => Some((stake, node)),
@@ -410,6 +438,7 @@ pub(crate) fn dedup_gossip_addresses(
 
 // Pings gossip addresses if needed.
 // Returns nodes which have recently responded to a ping message.
+/// 最近响应ping消息的节点
 #[must_use]
 pub(crate) fn maybe_ping_gossip_addresses<R: Rng + CryptoRng>(
     rng: &mut R,
@@ -418,18 +447,24 @@ pub(crate) fn maybe_ping_gossip_addresses<R: Rng + CryptoRng>(
     ping_cache: &Mutex<PingCache>,
     pings: &mut Vec<(SocketAddr, Ping)>,
 ) -> Vec<ContactInfo> {
+    // 获取ping缓存
     let mut ping_cache = ping_cache.lock().unwrap();
+    // 获取当前时间
     let now = Instant::now();
+    // 遍历节点
     nodes
         .into_iter()
         .filter(|node| {
+            // 获取节点地址
             let Ok(node_gossip) = node.gossip() else {
                 return false;
             };
+            // 检查节点是否收到ping响应
             let (check, ping) = {
                 let node = (*node.pubkey(), node_gossip);
                 ping_cache.check(rng, keypair, now, node)
             };
+            // 如果节点收到ping响应，则添加到ping列表
             if let Some(ping) = ping {
                 pings.push((node_gossip, ping));
             }

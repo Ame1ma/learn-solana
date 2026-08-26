@@ -63,10 +63,10 @@ const CRDS_GOSSIP_PRUNE_MIN_INGRESS_NODES: usize = 2;
 /// 八卦最大发送集大小
 const CRDS_GOSSIP_PUSH_ACTIVE_SET_SIZE: usize = CRDS_GOSSIP_PUSH_FANOUT + 3;
 
-/// 八卦发送
+/// 八卦发送器
 pub struct CrdsGossipPush {
     /// Active set of validators for push
-    /// 要发送的节点集
+    /// 推送目标节点集名单，已经按质押量排序，维护好了，每次有需要推送的crds值，都会从这里取节点名单进行推送
     active_set: RwLock<PushActiveSet>,
     /// Cursor into the crds table for values to push.
     /// 指向要发送的 crds 项的游标
@@ -78,7 +78,7 @@ pub struct CrdsGossipPush {
     /// 此缓存表示当前哪些验证器在其active_set中具有此节点的滞后视图
     /// 消息来源节点，和他们发送的消息的重复度得分
     received_cache: Mutex<ReceivedCache>,
-    /// 发送到节点的个数
+    /// 每次发送到节点的个数，可能会按这个进行切分批次
     push_fanout: usize,
     /// 消息超时
     pub(crate) msg_timeout: u64,
@@ -153,7 +153,7 @@ impl CrdsGossipPush {
     /// Process a push message to the network.
     ///
     /// Returns origins' pubkeys of upserted values.
-    /// 发送消息
+    /// 处理接收到的推送消息
     pub(crate) fn process_push_message(
         &self,
         crds: &RwLock<Crds>,
@@ -205,6 +205,9 @@ impl CrdsGossipPush {
     /// peers.
     /// The list of push messages is created such that all the randomly selected peers have not
     /// pruned the source addresses.
+    /// 构造即将推送的消息列表
+    /// 传入当前节点公钥，crds表，当前时间，质押量
+    /// 返回推送消息列表，推送消息个数，推送值个数
     pub(crate) fn new_push_messages(
         &self,
         pubkey: &Pubkey, // This node.
@@ -216,7 +219,9 @@ impl CrdsGossipPush {
         usize, // number of values
         usize, // number of push messages
     ) {
+        // 推送消息最大个数
         const MAX_NUM_PUSHES: usize = 1 << 12;
+        // 推送目标节点集名单，已经按质押量排序，维护好了，每次有需要推送的crds值，都会从这里取节点名单进行推送
         let active_set = self.active_set.read().unwrap();
         let mut num_pushes = 0;
         let mut num_values = 0;
@@ -225,13 +230,20 @@ impl CrdsGossipPush {
         let mut crds_cursor = self.crds_cursor.lock().unwrap();
         // crds should be locked last after self.{active_set,crds_cursor}.
         let crds = crds.read().unwrap();
+        // 获取所有剩余未发送的crds值
         let entries = crds
             .get_entries(crds_cursor.deref_mut())
             .map(|entry| &entry.value)
             .filter(|value| wallclock_window.contains(&value.wallclock()));
+        // 遍历所有剩余未发送的crds值
+        // 双层循环，外层循环遍历所有剩余未发送的crds值，内层循环遍历推送目标节点集名单
+        // 把每个值发给每个名单上的节点
         'outer: for value in entries {
+            // 推送值个数增加
             num_values += 1;
+            // 获取推送值的来源节点
             let origin = value.pubkey();
+            // 获取推送目标节点集名单
             let nodes = active_set.get_nodes(
                 pubkey,
                 &origin,
@@ -239,21 +251,30 @@ impl CrdsGossipPush {
                 stakes,
             );
             for node in nodes.take(self.push_fanout) {
+                // 推送消息列表增加推送值
                 push_messages.entry(*node).or_default().push(value.clone());
+                // 推送消息个数增加
                 num_pushes += 1;
+                // 推送消息个数超过最大个数则跳出
                 if num_pushes >= MAX_NUM_PUSHES {
                     break 'outer;
                 }
             }
         }
+        // 释放crds
         drop(crds);
+        // 释放crds游标
         drop(crds_cursor);
+        // 释放推送目标节点集名单
         drop(active_set);
+        // 推送消息个数增加
         self.num_pushes.fetch_add(num_pushes, Ordering::Relaxed);
+        // 返回推送消息列表，推送消息个数，推送值个数
         (push_messages, num_values, num_pushes)
     }
 
     /// Add the `from` to the peer's filter of nodes.
+    /// 将某些节点加入不推送名单
     pub(crate) fn process_prune_msg(
         &self,
         self_pubkey: &Pubkey,
@@ -266,6 +287,7 @@ impl CrdsGossipPush {
     }
 
     /// Refresh the push active set.
+    /// 刷新推送目标节点集名单，重新排序和洗牌
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn refresh_push_active_set(
         &self,
@@ -278,8 +300,10 @@ impl CrdsGossipPush {
         pings: &mut Vec<(SocketAddr, Ping)>,
         socket_addr_space: &SocketAddrSpace,
     ) {
+        // 随机数生成器
         let mut rng = rand::thread_rng();
         // Active and valid gossip nodes with matching shred-version.
+        // 获取所有活跃和有效的八卦节点
         let nodes = crds_gossip::get_gossip_nodes(
             &mut rng,
             timestamp(), // now
@@ -292,6 +316,7 @@ impl CrdsGossipPush {
             socket_addr_space,
         );
         // Check for nodes which have responded to ping messages.
+        // 检查哪些节点已经响应了ping消息
         let nodes = crds_gossip::maybe_ping_gossip_addresses(
             &mut rng,
             nodes,
@@ -299,15 +324,20 @@ impl CrdsGossipPush {
             ping_cache,
             pings,
         );
+        // 去重
         let nodes = crds_gossip::dedup_gossip_addresses(nodes, stakes)
             .into_values()
             .map(|(_stake, node)| *node.pubkey())
             .collect::<Vec<_>>();
+        // 如果节点列表为空，则返回
         if nodes.is_empty() {
             return;
         }
+        // 获取crds表中节点个数和质押量个数的最大值
         let cluster_size = crds.read().unwrap().num_pubkeys().max(stakes.len());
+        // 写锁
         let mut active_set = self.active_set.write().unwrap();
+        // 刷新推送目标节点集名单
         active_set.rotate(
             &mut rng,
             CRDS_GOSSIP_PUSH_ACTIVE_SET_SIZE,

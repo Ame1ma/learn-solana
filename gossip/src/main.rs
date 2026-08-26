@@ -23,7 +23,9 @@ use {
     },
 };
 
+/// 解析命令行参数
 fn parse_matches() -> ArgMatches<'static> {
+    // 通过消息分片版本过滤 gossip 节点
     let shred_version_arg = Arg::with_name("shred_version")
         .long("shred-version")
         .value_name("VERSION")
@@ -31,6 +33,7 @@ fn parse_matches() -> ArgMatches<'static> {
         .default_value("0")
         .help("Filter gossip nodes by this shred version");
 
+    // 
     let gossip_port_arg = clap::Arg::with_name("gossip_port")
         .long("gossip-port")
         .value_name("PORT")

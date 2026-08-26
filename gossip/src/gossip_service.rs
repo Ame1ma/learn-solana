@@ -1,4 +1,5 @@
 //! The `gossip_service` module implements the network control plane.
+//! gossip 服务入口点
 
 use {
     crate::{cluster_info::ClusterInfo, contact_info::ContactInfo},
@@ -30,11 +31,24 @@ use {
     },
 };
 
+/// gossip 服务
 pub struct GossipService {
+    /// 线程句柄，用于join等待
     thread_hdls: Vec<JoinHandle<()>>,
 }
 
 impl GossipService {
+    /// 创建 gossip 服务
+    /// 
+    /// # Arguments
+    /// 
+    /// * `cluster_info` - 集群信息
+    /// * `bank_forks` - 银行分叉
+    /// * `gossip_socket` - 八卦套接字
+    /// * `gossip_validators` - 八卦验证器
+    /// * `should_check_duplicate_instance` - 是否检查重复实例
+    /// * `stats_reporter_sender` - 状态报告发送器
+    /// * `exit` - 退出标志
     pub fn new(
         cluster_info: &Arc<ClusterInfo>,
         bank_forks: Option<Arc<RwLock<BankForks>>>,
@@ -44,14 +58,18 @@ impl GossipService {
         stats_reporter_sender: Option<Sender<Box<dyn FnOnce() + Send>>>,
         exit: Arc<AtomicBool>,
     ) -> Self {
+        // 创建请求发送器和接收器
         let (request_sender, request_receiver) = unbounded();
+        // 创建八卦套接字
         let gossip_socket = Arc::new(gossip_socket);
         trace!(
             "GossipService: id: {}, listening on: {:?}",
             &cluster_info.id(),
             gossip_socket.local_addr().unwrap()
         );
+        // 获取套接字地址空间
         let socket_addr_space = *cluster_info.socket_addr_space();
+        // 创建接收器
         let t_receiver = streamer::receiver(
             "solRcvrGossip".to_string(),
             gossip_socket.clone(),

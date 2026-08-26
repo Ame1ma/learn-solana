@@ -14,7 +14,8 @@ const NUM_PUSH_ACTIVE_SET_ENTRIES: usize = 25;
 //     min stake of { this node, crds value owner }
 // The entry represents set of gossip nodes to actively
 // push to for crds values belonging to the bucket.
-/// 这些节点集与 CRDS 值所有者的最小质押相关，并表示一组应该主动向其推送 CRDS 值的节点。
+/// 这些节点集与 CRDS 值所有者的最小质押相关，并表示一组应该主动向其推送 CRDS 值的节点名单。
+/// 每次有需要推送的crds值，都会从这里取节点名单进行推送
 /// 是一个质押桶列表
 /// 索引是质押量的sol位数，0位数放索引0，1位数放索引1，...
 #[derive(Default)]

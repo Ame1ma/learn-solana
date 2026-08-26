@@ -1,4 +1,5 @@
 //! The definition of a Solana network packet.
+//! solana 网络包
 #![cfg_attr(feature = "frozen-abi", feature(min_specialization))]
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 

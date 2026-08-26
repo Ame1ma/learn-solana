@@ -103,6 +103,19 @@ impl StreamerReceiveStats {
 
 pub type Result<T> = std::result::Result<T, StreamerError>;
 
+/// 接收消息
+/// 
+/// # Arguments
+/// 
+/// * `socket` - 套接字
+/// * `exit` - 退出标志
+/// * `packet_batch_sender` - 包批次发送器
+/// * `recycler` - 回收器
+/// * `stats` - 统计信息
+/// * `coalesce` - 合并时间
+/// * `use_pinned_memory` - 是否使用固定内存
+/// * `in_vote_only_mode` - 是否在投票模式下
+/// * `is_staked_service` - 是否是质押服务
 fn recv_loop(
     socket: &UdpSocket,
     exit: &AtomicBool,
@@ -115,6 +128,7 @@ fn recv_loop(
     is_staked_service: bool,
 ) -> Result<()> {
     loop {
+        // 创建一个包批次
         let mut packet_batch = if use_pinned_memory {
             PacketBatch::new_with_recycler(recycler, PACKETS_PER_BATCH, stats.name)
         } else {
@@ -161,6 +175,20 @@ fn recv_loop(
     }
 }
 
+/// 创建一个接收器
+/// 
+/// # Arguments
+/// 
+/// * `thread_name` - 线程名称
+/// * `socket` - 套接字
+/// * `exit` - 退出标志
+/// * `packet_batch_sender` - 包批次发送器
+/// * `recycler` - 回收器
+/// * `stats` - 统计信息
+/// * `coalesce` - 合并时间
+/// * `use_pinned_memory` - 是否使用固定内存
+/// * `in_vote_only_mode` - 是否在投票模式下
+/// * `is_staked_service` - 是否是质押服务
 #[allow(clippy::too_many_arguments)]
 pub fn receiver(
     thread_name: String,
@@ -174,11 +202,14 @@ pub fn receiver(
     in_vote_only_mode: Option<Arc<AtomicBool>>,
     is_staked_service: bool,
 ) -> JoinHandle<()> {
+    // 设置套接字读取超时时间
     let res = socket.set_read_timeout(Some(Duration::new(1, 0)));
     assert!(res.is_ok(), "streamer::receiver set_read_timeout error");
+    // 创建一个线程
     Builder::new()
         .name(thread_name)
         .spawn(move || {
+            // 接收消息
             let _ = recv_loop(
                 &socket,
                 &exit,

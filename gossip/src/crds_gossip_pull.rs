@@ -10,6 +10,9 @@
 //! Bloom filters have a false positive rate.  Each requests uses a different bloom filter
 //! with random hash functions.  So each subsequent request will have a different distribution
 //! of false positives.
+//! 
+//! 网络反熵协议
+//! 随机向网络上的一个节点询问未包含在布隆过滤器中的数据。
 
 use {
     crate::{
@@ -50,10 +53,14 @@ use {
     },
 };
 
+/// 拉取请求的crds过期时间
 pub const CRDS_GOSSIP_PULL_CRDS_TIMEOUT_MS: u64 = 15000;
 // Retention period of hashes of received outdated values.
+/// 插入失败记录的保留时间
 const FAILED_INSERTS_RETENTION_MS: u64 = 20_000;
+/// 布隆过滤器的错误率
 pub const FALSE_RATE: f64 = 0.1f64;
+/// 布隆过滤器的哈希函数个数
 pub const KEYS: f64 = 8f64;
 
 /// 基于布隆过滤器的 crds 过滤器
@@ -227,6 +234,7 @@ impl Default for CrdsGossipPull {
 }
 impl CrdsGossipPull {
     /// Generate a random request
+    /// 生成一个随机请求
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new_pull_request(
         &self,
@@ -242,8 +250,10 @@ impl CrdsGossipPull {
         pings: &mut Vec<(SocketAddr, Ping)>,
         socket_addr_space: &SocketAddrSpace,
     ) -> Result<Vec<(ContactInfo, Vec<CrdsFilter>)>, CrdsGossipError> {
+        // 随机数生成器
         let mut rng = rand::thread_rng();
         // Active and valid gossip nodes with matching shred-version.
+        // 获取匹配的节点
         let nodes = crds_gossip::get_gossip_nodes(
             &mut rng,
             now,
@@ -257,6 +267,7 @@ impl CrdsGossipPull {
             socket_addr_space,
         );
         // Check for nodes which have responded to ping messages.
+        // 检查哪些节点已经响应了ping消息
         let nodes = crds_gossip::maybe_ping_gossip_addresses(
             &mut rng,
             nodes,
@@ -264,10 +275,12 @@ impl CrdsGossipPull {
             ping_cache,
             pings,
         );
+        // 获取节点质押量
         let stake_cap = stakes
             .get(&self_keypair.pubkey())
             .copied()
             .unwrap_or_default();
+        // 去重八卦地址，只保留每个节点的质押量最高记录
         let (weights, nodes): (Vec<u64>, Vec<ContactInfo>) =
             crds_gossip::dedup_gossip_addresses(nodes, stakes)
                 .into_values()
@@ -278,12 +291,16 @@ impl CrdsGossipPull {
                     (weight, node)
                 })
                 .unzip();
+        // 如果节点列表为空，则返回
         if nodes.is_empty() {
             return Err(CrdsGossipError::NoPeers);
         }
+        // 构建布隆过滤器
         let filters = self.build_crds_filters(thread_pool, crds, bloom_size);
         // Associate each pull-request filter with a randomly selected peer.
+        // 根据权重随机选择一个节点
         let dist = WeightedIndex::new(weights).unwrap();
+        // 将过滤器与节点关联
         let out = filters.into_iter().fold(HashMap::new(), |mut out, filter| {
             let node = &nodes[dist.sample(&mut rng)];
             match out.entry(*node.pubkey()) {
@@ -294,6 +311,7 @@ impl CrdsGossipPull {
             };
             out
         });
+        // 返回结果
         Ok(out.into_values().collect())
     }
 

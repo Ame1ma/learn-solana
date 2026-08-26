@@ -18,15 +18,22 @@ pub const NUM_PACKETS: usize = 1024 * 8;
 pub const PACKETS_PER_BATCH: usize = 64;
 pub const NUM_RCVMMSGS: usize = 64;
 
+/// 包批次
 #[cfg_attr(feature = "frozen-abi", derive(AbiExample))]
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct PacketBatch {
     packets: PinnedVec<Packet>,
 }
 
+/// 包批次回收器
 pub type PacketBatchRecycler = Recycler<PinnedVec<Packet>>;
 
 impl PacketBatch {
+    /// 创建一个包批次
+    /// 
+    /// # Arguments
+    /// 
+    /// * `packets` - 包
     pub fn new(packets: Vec<Packet>) -> Self {
         let packets = PinnedVec::from_vec(packets);
         Self { packets }

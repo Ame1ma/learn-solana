@@ -118,7 +118,7 @@ pub struct Crds {
     table: IndexMap<CrdsValueLabel, VersionedCrdsValue>,
     /// 当前插入位置的游标
     cursor: Cursor, // Next insert ordinal location.
-    /// 由 crds 构成的crds哈希前导分组列表为的是把 crds 值放进去以后按哈希的前导位进行聚合，
+    /// 由 crds 构成的crds哈希前导分组列表，为的是把 crds 值放进去以后按哈希的前导位进行聚合，
     /// 后面可以按哈希前导位比特值快速取出符合的 crds 值 这里主要只记录它在table里的索引，而不是值
     shards: CrdsShards,
     /// 节点联系信息在table中的索引
@@ -210,7 +210,7 @@ pub struct VersionedCrdsValue {
     /// crds 值
     pub value: CrdsValue,
     /// local time when updated
-    /// 升级时的本地时间戳
+    /// 更新这条记录时的本地时间戳
     pub(crate) local_timestamp: u64,
     /// None -> value upserted by GossipRoute::{LocalMessage,PullRequest}
     /// Some(0) -> value upserted by GossipRoute::PullResponse
